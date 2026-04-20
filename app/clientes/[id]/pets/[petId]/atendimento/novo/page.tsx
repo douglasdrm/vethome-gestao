@@ -19,7 +19,8 @@ import {
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { uploadFile } from '@/lib/storage';
-import { X, Upload } from 'lucide-react';
+import { X, Upload, Search, Package, Trash2, Camera as ScanIcon } from 'lucide-react';
+import { BarcodeScanner } from '@/components/inventory/BarcodeScanner';
 
 export default function NovoAtendimentoPage() {
   const params = useParams();
@@ -43,6 +44,12 @@ export default function NovoAtendimentoPage() {
   const [fotoUrl, setFotoUrl] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  // Insumos e Estoque
+  const [usedItems, setUsedItems] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -61,6 +68,43 @@ export default function NovoAtendimentoPage() {
   
   const handleVitalsChange = (field: string, val: string) => {
     setVitals(prev => ({ ...prev, [field]: val }));
+  };
+
+  const handleSearchProduct = async (term: string) => {
+    setSearchTerm(term);
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    const { data } = await supabase
+      .from('estoque')
+      .select('*, estoque_lotes(*)')
+      .or(`nome.ilike.%${term}%,codigo_barras.eq.${term}`)
+      .limit(5);
+    
+    setSearchResults(data || []);
+  };
+
+  const addItem = (product: any, lote: any) => {
+    const existing = usedItems.find(item => item.lote_id === lote.id);
+    if (existing) return;
+
+    setUsedItems([...usedItems, {
+      id: product.id,
+      nome: product.nome,
+      lote_id: lote.id,
+      num_lote: lote.num_lote,
+      quantidade: 1,
+      unidade: product.unidade,
+      disponivel: lote.qtd_atual
+    }]);
+    setSearchTerm('');
+    setSearchResults([]);
+  };
+
+  const removeUsedItem = (loteId: string) => {
+    setUsedItems(usedItems.filter(i => i.lote_id !== loteId));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,7 +170,36 @@ export default function NovoAtendimentoPage() {
           }]);
       }
 
-      // 4. Criar Evento na Timeline
+      // 4. Lógica de Baixa no Estoque (Insumos)
+      for (const item of usedItems) {
+        // a. Subtrair do lote
+        const { data: currentLote } = await supabase
+          .from('estoque_lotes')
+          .select('qtd_atual')
+          .eq('id', item.lote_id)
+          .single();
+        
+        const novaQtd = (currentLote?.qtd_atual || 0) - item.quantidade;
+
+        await supabase
+          .from('estoque_lotes')
+          .update({ qtd_atual: novaQtd })
+          .eq('id', item.lote_id);
+
+        // b. Registrar movimentação (Histórico)
+        await supabase
+          .from('movimentacao_estoque')
+          .insert([{
+            user_id: user.id,
+            produto_id: item.id,
+            tipo: 'saída_uso_clinico',
+            quantidade: item.quantidade,
+            motivo: `Uso no atendimento de ${params.petId}`,
+            atendimento_id: appointment.id
+          }]);
+      }
+
+      // 5. Criar Evento na Timeline
       await supabase
         .from('eventos')
         .insert([{
@@ -231,12 +304,9 @@ export default function NovoAtendimentoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                    <Syringe size={20} className="text-emerald-500" />
-                    Vacinas Aplicadas
+                    <Camera size={20} className="text-emerald-500" />
+                    Anexar Foto / Exame
                   </h3>
-                  <button type="button" className="text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg transition-colors">
-                    <Plus size={20} />
-                  </button>
                 </div>
                 <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/50 hover:border-emerald-200 transition-all">
                   {fotoUrl ? (
@@ -252,7 +322,7 @@ export default function NovoAtendimentoPage() {
                   ) : (
                     <label className="flex flex-col items-center gap-3 cursor-pointer">
                       <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400">
-                        {uploading ? <Loader2 className="animate-spin text-emerald-500" /> : <Camera size={24} />}
+                        {uploading ? <Loader2 className="animate-spin text-emerald-500" /> : <ScanIcon size={24} />}
                       </div>
                       <div className="text-center">
                         <p className="text-sm font-bold text-slate-700">Anexar Foto</p>
@@ -264,7 +334,98 @@ export default function NovoAtendimentoPage() {
                 </div>
             </div>
 
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
+                  <Package size={20} className="text-emerald-500" />
+                  Insumos e Vacinas
+                </h3>
+                
+                <div className="flex gap-2 mb-4">
+                  <div className="relative flex-1">
+                    <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+                    <input 
+                       type="text" 
+                       placeholder="Buscar no estoque..." 
+                       className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                       value={searchTerm}
+                       onChange={(e) => handleSearchProduct(e.target.value)}
+                    />
+                    {searchResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl mt-2 z-20 overflow-hidden">
+                        {searchResults.map((prod) => (
+                           <div key={prod.id} className="p-2 border-b border-slate-50 last:border-none">
+                              <p className="text-xs font-bold text-slate-700 px-2 pt-1">{prod.nome}</p>
+                              <div className="space-y-1 mt-1">
+                                {prod.estoque_lotes?.map((lote: any) => (
+                                  <button 
+                                    key={lote.id}
+                                    type="button"
+                                    onClick={() => addItem(prod, lote)}
+                                    className="w-full text-left px-3 py-2 text-[10px] bg-slate-50 hover:bg-emerald-50 rounded-lg flex justify-between items-center transition-colors"
+                                  >
+                                    <span>Lote: <b>{lote.num_lote}</b></span>
+                                    <span>Sal: <b>{lote.qtd_atual} {prod.unidade}</b></span>
+                                  </button>
+                                ))}
+                              </div>
+                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button 
+                     type="button" 
+                     onClick={() => setShowScanner(true)}
+                     className="p-2.5 bg-slate-100 text-slate-600 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 transition-all"
+                  >
+                    <ScanIcon size={20} />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {usedItems.map((item) => (
+                    <div key={item.lote_id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-800">{item.nome}</p>
+                        <p className="text-[10px] text-slate-400">Lote: {item.num_lote}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number"
+                          className="w-16 p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center"
+                          value={item.quantidade}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setUsedItems(usedItems.map(i => i.lote_id === item.lote_id ? {...i, quantidade: val} : i));
+                          }}
+                        />
+                        <span className="text-[10px] font-bold text-slate-500">{item.unidade}</span>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => removeUsedItem(item.lote_id)}
+                        className="text-rose-400 hover:text-rose-600 p-1"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {usedItems.length === 0 && (
+                    <div className="text-center py-6 border border-dashed border-slate-200 rounded-2xl">
+                      <p className="text-[10px] font-bold text-slate-400">Nenhum insumo adicionado</p>
+                    </div>
+                  )}
+                </div>
+
+                {showScanner && (
+                  <BarcodeScanner 
+                    onScan={(code) => handleSearchProduct(code)}
+                    onClose={() => setShowScanner(false)}
+                  />
+                )}
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm md:col-span-2">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
                   <DollarSign size={20} className="text-emerald-500" />
                   Resumo Financeiro

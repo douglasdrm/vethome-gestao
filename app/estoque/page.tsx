@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { ProductModal } from '@/components/inventory/ProductModal';
 import { BatchList } from '@/components/inventory/BatchList';
+import { StockOutModal } from '@/components/inventory/StockOutModal';
 import { 
   Package, 
   Plus, 
@@ -13,7 +14,10 @@ import {
   Calendar,
   Layers,
   ArrowRight,
-  ClipboardList
+  ClipboardList,
+  TrendingDown,
+  Barcode,
+  DollarSign
 } from 'lucide-react';
 import { KPICard } from '@/components/finance/KPICard';
 import { supabase } from '@/lib/supabase';
@@ -21,6 +25,7 @@ import { addDays, isBefore, parseISO } from 'date-fns';
 
 export default function EstoquePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isStockOutModalOpen, setIsStockOutModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [inventory, setInventory] = useState<any[]>([]);
@@ -37,20 +42,24 @@ export default function EstoquePage() {
       const { data, error } = await supabase
         .from('estoque')
         .select('*, estoque_lotes (*)')
-        .ilike('nome', `%${searchTerm}%`)
         .order('nome');
 
       if (error) throw error;
+
+      const filtered = data.filter((item: any) => 
+        item.nome.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        item.codigo_barras?.includes(searchTerm)
+      );
 
       let lowStockCount = 0;
       let expiringSoonCount = 0;
       const now = new Date();
       const in30Days = addDays(now, 30);
 
-      const formatted = data.map((item: any) => {
+      const formatted = filtered.map((item: any) => {
         const totalQty = item.estoque_lotes?.reduce((acc: number, b: any) => acc + Number(b.qtd_atual), 0) || 0;
         
-        if (totalQty < item.qtd_minima) lowStockCount++;
+        if (totalQty <= item.qtd_minima) lowStockCount++;
 
         const formattedBatches = item.estoque_lotes?.map((b: any) => {
           const expiry = parseISO(b.vencimento);
@@ -72,13 +81,15 @@ export default function EstoquePage() {
           totalQuantity: totalQty,
           unit: item.unidade,
           minQuantity: item.qtd_minima,
+          preco_venda: item.preco_venda,
+          codigo_barras: item.codigo_barras,
           batches: formattedBatches
         };
       });
 
       setInventory(formatted);
       setStats({
-        totalItems: data.length,
+        totalItems: filtered.length,
         lowStock: lowStockCount,
         expiringSoon: expiringSoonCount
       });
@@ -110,13 +121,22 @@ export default function EstoquePage() {
             <p className="text-slate-400 font-medium mt-2 ml-1">Controle de vacinas, medicamentos e insumos clínicos.</p>
           </div>
 
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-[2rem] font-bold shadow-xl flex items-center gap-2 transition-all active:scale-95"
-          >
-            <Plus size={20} />
-            Novo Produto
-          </button>
+          <div className="flex gap-4">
+             <button 
+              onClick={() => setIsStockOutModalOpen(true)}
+              className="bg-rose-50 text-rose-600 px-8 py-4 rounded-[2rem] font-bold border border-rose-100 hover:bg-rose-100 transition-all active:scale-95 flex items-center gap-2"
+            >
+              <TrendingDown size={20} />
+              Registrar Saída
+            </button>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-[2rem] font-bold shadow-xl flex items-center gap-2 transition-all active:scale-95"
+            >
+              <Plus size={20} />
+              Novo Produto
+            </button>
+          </div>
         </div>
 
         {/* Status Grid */}
@@ -147,7 +167,7 @@ export default function EstoquePage() {
                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                 <input 
                   type="text" 
-                  placeholder="Buscar produto ou lote..." 
+                  placeholder="Buscar produto ou bipar EAN..." 
                   className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all outline-none text-sm font-semibold"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -170,10 +190,16 @@ export default function EstoquePage() {
                        <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
                          {product.category}
                        </span>
-                       {product.totalQuantity < product.minQuantity && (
+                       {product.totalQuantity <= product.minQuantity && (
                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 flex items-center gap-1">
                            <AlertTriangle size={10} />
                            Estoque Baixo
+                         </span>
+                       )}
+                       {product.codigo_barras && (
+                         <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                            <Barcode size={14} />
+                            {product.codigo_barras}
                          </span>
                        )}
                     </div>
@@ -184,8 +210,8 @@ export default function EstoquePage() {
                          <span>Total: <b className="text-slate-800">{product.totalQuantity} {product.unit}</b></span>
                        </div>
                        <div className="flex items-center gap-1.5 text-slate-500">
-                         <ClipboardList size={16} className="text-slate-300" />
-                         <span>Mínimo: <b className="text-slate-800">{product.minQuantity} {product.unit}</b></span>
+                         <DollarSign size={16} className="text-emerald-500" />
+                         <span>Venda: <b className="text-emerald-600">R$ {product.preco_venda?.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</b></span>
                        </div>
                     </div>
                   </div>
@@ -193,7 +219,7 @@ export default function EstoquePage() {
                   {/* Gestão de Lotes */}
                   <div className="flex-[1.5]">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Lotes em Ativo</h4>
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Lotes no Sistema</h4>
                       <button className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
                         <Plus size={14} />
                         Add Lote
@@ -204,6 +230,11 @@ export default function EstoquePage() {
                 </div>
               </div>
             ))}
+            {inventory.length === 0 && (
+               <div className="p-20 text-center text-slate-400 font-medium italic">
+                Nenhum produto encontrado com esse filtro.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -211,6 +242,13 @@ export default function EstoquePage() {
       <ProductModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
+        onSuccess={fetchInventory}
+      />
+
+      <StockOutModal
+        isOpen={isStockOutModalOpen}
+        onClose={() => setIsStockOutModalOpen(false)}
+        onSuccess={fetchInventory}
       />
     </AppShell>
   );
