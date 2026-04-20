@@ -41,6 +41,8 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
     qtd_inicial: ''
   });
 
+  if (!isOpen) return null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
