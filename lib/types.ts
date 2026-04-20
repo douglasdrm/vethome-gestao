@@ -178,8 +178,8 @@ export type Database = {
       vacinas:  { Row: Vacina;  Insert: CreateVacinaDto  & { user_id: string }; Update: UpdateVacinaDto };
       financeiro: { Row: Financeiro; Insert: Omit<Financeiro, 'id' | 'created_at' | 'cliente'>; Update: Partial<Financeiro> };
     };
-    Views: {};
-    Functions: {};
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
     Enums: {
       status_agenda: StatusAgenda;
       tipo_evento: TipoEvento;
