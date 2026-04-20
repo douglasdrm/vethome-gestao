@@ -17,6 +17,7 @@ import {
   Plus
 } from 'lucide-react';
 import Link from 'next/link';
+import { supabase, MOCK_USER_ID } from '@/lib/supabase';
 
 export default function NovoAtendimentoPage() {
   const params = useParams();
@@ -44,12 +45,83 @@ export default function NovoAtendimentoPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!anamnese && !conduta) {
+      alert('Por favor, preencha a anamnese ou a conduta.');
+      return;
+    }
+
     setLoading(true);
-    // Simulação de persistência
-    setTimeout(() => {
+    try {
+      const animalId = params.petId as string;
+      const clienteId = params.id as string;
+      const atendimentoData = {
+        user_id: MOCK_USER_ID,
+        animal_id: animalId,
+        cliente_id: clienteId,
+        data_hora: new Date(date).toISOString(),
+        tipo: 'atendimento' as any,
+        anamnese,
+        diagnostico: conduta, // Usando conduta como diagnóstico/plano
+        peso_kg: vitals.weight ? parseFloat(vitals.weight) : null,
+        temperatura: vitals.temp ? parseFloat(vitals.temp) : null,
+        valor: value ? parseFloat(value) : 0,
+        status_pagamento: 'pago' as any, // Simplificado para MVP
+        observacoes: `Frequência Cardíaca: ${vitals.heartRate || '-'} | FR: ${vitals.respRate || '-'} | TPC: ${vitals.tpc || '-'} | Mucosas: ${vitals.mucosas || '-'}`
+      };
+
+      // 1. Salvar Atendimento
+      const { data: appointment, error: appError } = await supabase
+        .from('atendimentos')
+        .insert([atendimentoData])
+        .select()
+        .single();
+
+      if (appError) throw appError;
+
+      // 2. Atualizar Peso do Animal se fornecido
+      if (vitals.weight) {
+        await supabase
+          .from('animais')
+          .update({ peso_kg: parseFloat(vitals.weight) })
+          .eq('id', animalId);
+      }
+
+      // 3. Gerar Lançamento Financeiro se houver valor
+      if (value && parseFloat(value) > 0) {
+        await supabase
+          .from('financeiro')
+          .insert([{
+            user_id: MOCK_USER_ID,
+            tipo: 'receita',
+            descricao: `Atendimento - ${anamnese.substring(0, 30)}...`,
+            valor: parseFloat(value),
+            data: date,
+            status: 'pago',
+            atendimento_id: appointment.id,
+            cliente_id: clienteId
+          }]);
+      }
+
+      // 4. Criar Evento na Timeline
+      await supabase
+        .from('eventos')
+        .insert([{
+          user_id: MOCK_USER_ID,
+          animal_id: animalId,
+          tipo: 'atendimento',
+          titulo: 'Consulta Clínica',
+          descricao: anamnese.substring(0, 100),
+          data: date,
+          atendimento_id: appointment.id
+        }]);
+
+      router.push(`/clientes/${clienteId}/pets/${animalId}`);
+    } catch (err) {
+      console.error('Erro ao salvar atendimento:', err);
+      alert('Erro ao salvar prontuário. Tente novamente.');
+    } finally {
       setLoading(false);
-      router.back();
-    }, 1500);
+    }
   };
 
   return (

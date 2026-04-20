@@ -9,8 +9,12 @@ import {
   Zap,
   CheckCircle2,
   ChevronRight,
-  Upload
+  Upload,
+  Search,
+  PawPrint,
+  Loader2
 } from 'lucide-react';
+import { supabase, MOCK_USER_ID } from '@/lib/supabase';
 import { calculateNextDoseDate, formatToInputDate, VaccineType, VACCINE_PROTOCOLS } from '@/lib/vaccine-logic';
 
 interface QuickLogModalProps {
@@ -25,6 +29,47 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
   const [selectedVaccine, setSelectedVaccine] = useState<string>('');
   const [nextDoseDate, setNextDoseDate] = useState('');
   
+  // Novos estados para integração
+  const [searchPet, setSearchPet] = useState('');
+  const [pets, setPets] = useState<any[]>([]);
+  const [selectedPetId, setSelectedPetId] = useState<string>('');
+  const [isSearchingPet, setIsSearchingPet] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [serviceDescription, setServiceDescription] = useState('');
+
+  // Busca pets quando o modal abre ou o termo de busca muda
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchPet.length >= 2) {
+        setIsSearchingPet(true);
+        try {
+          const { data, error } = await supabase
+            .from('animais')
+            .select(`
+              id, 
+              nome, 
+              especie,
+              clientes (nome)
+            `)
+            .ilike('nome', `%${searchPet}%`)
+            .limit(5);
+          
+          if (!error && data) setPets(data);
+        } catch (err) {
+          console.error('Erro ao buscar pets:', err);
+        } finally {
+          setIsSearchingPet(false);
+        }
+      } else if (searchPet.length === 0) {
+        setPets([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchPet, isOpen]);
+  
   const handleVaccineChange = (v: string) => {
     setSelectedVaccine(v);
     if (v) {
@@ -38,6 +83,102 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
     if (type === 'vaccine' && selectedVaccine) {
       const nextDate = calculateNextDoseDate(selectedVaccine, new Date(d));
       setNextDoseDate(formatToInputDate(nextDate));
+    }
+  };
+
+  const handleSave = async () => {
+    if (!selectedPetId) {
+      alert('Por favor, selecione um animal.');
+      return;
+    }
+    if (type === 'vaccine' && !selectedVaccine) {
+      alert('Por favor, selecione a vacina.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (type === 'vaccine') {
+        const { error: vacError } = await supabase
+          .from('vacinas')
+          .insert([{
+            user_id: MOCK_USER_ID,
+            animal_id: selectedPetId,
+            nome: selectedVaccine,
+            data_aplicacao: date,
+            data_reforco: nextDoseDate || null
+          }]);
+        
+        if (vacError) throw vacError;
+
+        const { data: stockItems } = await supabase
+          .from('estoque')
+          .select('id, nome, estoque_lotes(id, qtd_atual)')
+          .ilike('nome', `%${selectedVaccine}%`)
+          .limit(1);
+
+        if (stockItems && stockItems.length > 0) {
+          const item = stockItems[0];
+          const availableBatch = item.estoque_lotes?.find((b: any) => b.qtd_atual > 0);
+          
+          if (availableBatch) {
+            await supabase
+              .from('estoque_lotes')
+              .update({ qtd_atual: availableBatch.qtd_atual - 1 })
+              .eq('id', availableBatch.id);
+          }
+        }
+
+        await supabase
+          .from('eventos')
+          .insert([{
+            user_id: MOCK_USER_ID,
+            animal_id: selectedPetId,
+            tipo: 'vacina',
+            titulo: `Vacinação: ${selectedVaccine}`,
+            descricao: `Aplicação rápida realizada. Próximo reforço: ${nextDoseDate || 'Não agendado'}.`,
+            data: date
+          }]);
+
+      } else {
+        // Encontrar o pet na lista para pegar o cliente_id
+        const petInfo = pets.find(p => p.id === selectedPetId);
+
+        const { data: appData, error: appError } = await supabase
+          .from('atendimentos')
+          .insert([{
+            user_id: MOCK_USER_ID,
+            animal_id: selectedPetId,
+            cliente_id: petInfo?.clientes?.id || null,
+            data_hora: new Date(date).toISOString(),
+            tipo: 'atendimento' as any,
+            anamnese: serviceDescription || 'Atendimento rápido registrado pelo modal.',
+            status_pagamento: 'pendente' as any
+          }])
+          .select()
+          .single();
+
+        if (appError) throw appError;
+
+        await supabase
+          .from('eventos')
+          .insert([{
+            user_id: MOCK_USER_ID,
+            animal_id: selectedPetId,
+            tipo: 'atendimento',
+            titulo: 'Atendimento Rápido',
+            descricao: serviceDescription || 'Registro via Zap!',
+            data: date,
+            atendimento_id: appData.id
+          }]);
+      }
+
+      onClose();
+    } catch (err) {
+      console.error('Erro no QuickLog:', err);
+      alert('Erro ao salvar registro.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -96,6 +237,50 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
             </div>
           ) : (
             <div className="space-y-5">
+              {/* Seletor de Pet */}
+              <div className="relative">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Para qual animal?</label>
+                <div className="relative flex items-center">
+                  <Search size={18} className="absolute left-3 text-slate-400" />
+                  <input 
+                    type="text"
+                    placeholder="Busque pelo nome do pet..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    value={searchPet}
+                    onChange={(e) => { 
+                      setSearchPet(e.target.value); 
+                      if (selectedPetId) setSelectedPetId(''); 
+                    }}
+                  />
+                  {isSearchingPet && <Loader2 size={16} className="absolute right-3 animate-spin text-emerald-500" />}
+                </div>
+
+                {/* Dropdown de Pets */}
+                {pets.length > 0 && !selectedPetId && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    {pets.map((pet) => (
+                      <button
+                        key={pet.id}
+                        onClick={() => {
+                          setSelectedPetId(pet.id);
+                          setSearchPet(`${pet.nome} (${pet.clientes?.nome})`);
+                          setPets([]);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors text-left"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-lg">
+                          {pet.especie === 'canina' ? '🐕' : '🐈'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">{pet.nome}</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{pet.clientes?.nome}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Foto da Vacina - O diferencial para agilidade */}
               {type === 'vaccine' && (
                 <div className="grid grid-cols-2 gap-4">
@@ -103,7 +288,7 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Foto da Vacina / Lote</label>
                     <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 hover:border-emerald-300 hover:bg-emerald-50/20 transition-all cursor-pointer">
                       <Camera size={32} className="text-slate-400" />
-                      <span className="text-xs text-slate-500 font-medium">Tirar foto ou anexar</span>
+                      <span className="text-xs text-slate-500 font-medium">Tirar foto ou anexar (Em breve)</span>
                     </div>
                   </div>
                   
@@ -143,6 +328,8 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
                     rows={3}
                     placeholder="O que foi feito?"
                     className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                    value={serviceDescription}
+                    onChange={(e) => setServiceDescription(e.target.value)}
                   ></textarea>
                 </div>
               )}
@@ -166,10 +353,12 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
                   Voltar
                 </button>
                 <button 
-                  onClick={onClose}
-                  className={`flex-[2] px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all active:scale-95 ${type === 'vaccine' ? 'bg-emerald-600 shadow-emerald-200' : 'bg-blue-600 shadow-blue-200'}`}
+                  onClick={handleSave}
+                  disabled={loading}
+                  className={`flex-[2] px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${type === 'vaccine' ? 'bg-emerald-600 shadow-emerald-200' : 'bg-blue-600 shadow-blue-200'} disabled:opacity-50`}
                 >
-                  Salvar Registro
+                  {loading && <Loader2 size={18} className="animate-spin" />}
+                  {loading ? 'Salvando...' : 'Salvar Registro'}
                 </button>
               </div>
             </div>
