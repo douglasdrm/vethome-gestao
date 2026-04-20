@@ -13,20 +13,48 @@ import {
   Loader2
 } from 'lucide-react';
 import Link from 'next/link';
+import { supabase, MOCK_USER_ID } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-
 export default function NovoClientePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Estados do form
+  const [nome, setNome] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [email, setEmail] = useState('');
+  const [endereco, setEndereco] = useState('');
+  const [observacoes, setObservacoes] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Simulação de salvamento
-    setTimeout(() => {
+    setErrorMsg('');
+
+    try {
+      const { data, error } = await supabase
+        .from('clientes')
+        .insert({
+          user_id: MOCK_USER_ID,
+          nome,
+          telefone: telefone || null,
+          email: email || null,
+          endereco: endereco || null,
+          observacoes: observacoes || null
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Redireciona para o perfil do cliente recém-criado
+      router.push(`/clientes/${data.id}`);
+    } catch (err: any) {
+      console.error('Erro ao salvar cliente:', err);
+      setErrorMsg(err.message || 'Erro ao salvar cliente. Tente novamente.');
       setLoading(false);
-      router.push('/clientes');
-    }, 1000);
+    }
   };
 
   return (
@@ -44,6 +72,12 @@ export default function NovoClientePage() {
           <p className="text-slate-500">Cadastre os dados básicos do tutor para começar.</p>
         </div>
 
+        {errorMsg && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium">
+            {errorMsg}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
             <div className="grid grid-cols-1 gap-6">
@@ -57,6 +91,8 @@ export default function NovoClientePage() {
                   required
                   type="text"
                   placeholder="Ex: João Silva"
+                  value={nome}
+                  onChange={e => setNome(e.target.value)}
                   className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
                 />
               </div>
@@ -71,6 +107,8 @@ export default function NovoClientePage() {
                   required
                   type="tel"
                   placeholder="(00) 00000-0000"
+                  value={telefone}
+                  onChange={e => setTelefone(e.target.value)}
                   className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
                 />
               </div>
@@ -84,6 +122,8 @@ export default function NovoClientePage() {
                 <input 
                   type="email"
                   placeholder="cliente@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                   className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
                 />
               </div>
@@ -97,6 +137,8 @@ export default function NovoClientePage() {
                 <input 
                   type="text"
                   placeholder="Rua, número, bairro..."
+                  value={endereco}
+                  onChange={e => setEndereco(e.target.value)}
                   className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
                 />
               </div>
@@ -110,6 +152,8 @@ export default function NovoClientePage() {
                 <textarea 
                   rows={3}
                   placeholder="Ex: Cliente prefere atendimento à tarde, mora em condomínio..."
+                  value={observacoes}
+                  onChange={e => setObservacoes(e.target.value)}
                   className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
                 ></textarea>
               </div>

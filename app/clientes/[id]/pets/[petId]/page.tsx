@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { PetAvatar } from '@/components/pets/PetAvatar';
@@ -17,60 +17,135 @@ import {
   Stethoscope,
   ChevronRight,
   Filter,
-  Camera
+  Camera,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
-
-// Mock data para o perfil do pet
-const PET_DATA = {
-  id: 'p1',
-  name: 'Thor',
-  species: 'Cão',
-  breed: 'Golden Retriever',
-  age: '3 anos',
-  gender: 'M',
-  weight: '32.5',
-  clientName: 'Douglas Medeiros',
-  clientId: '1',
-  alerts: [
-    { type: 'allergy', label: 'Alergia', description: 'Reação severa a Dipirona' },
-    { type: 'chronic', label: 'Condição', description: 'Displasia coxofemoral leve' }
-  ],
-  history: [
-    {
-      id: 'h1',
-      type: 'vaccine' as const,
-      date: '15/04/2026',
-      title: 'Vacina V10 (Raiva)',
-      description: 'Aplicação anual de reforço. Animal apresentou-se calmo durante o procedimento.',
-      nextDose: '15/04/2027',
-      attachments: ['https://images.unsplash.com/photo-1576091160550-2173dba999ef?q=80&w=200&auto=format&fit=crop']
-    },
-    {
-      id: 'h2',
-      type: 'appointment' as const,
-      date: '10/04/2026',
-      title: 'Consulta Geral e Check-up',
-      description: 'Avaliação de rotina devido à displasia. Recomendado fisioterapia leve.',
-      attachments: ['https://images.unsplash.com/photo-1516733725897-1aa73b87c8e8?q=80&w=200&auto=format&fit=crop']
-    },
-    {
-      id: 'h3',
-      type: 'appointment' as const,
-      date: '20/03/2026',
-      title: 'Atendimento Domiciliar - Coceira',
-      description: 'Dermatite atópica sazonal. Prescrito Apoquel e banhos terapêuticos.',
-      attachments: []
-    }
-  ]
-};
+import { supabase } from '@/lib/supabase';
 
 export default function DetalhePetPage() {
   const params = useParams();
   const router = useRouter();
   
-  // No mundo real, buscaríamos pelo id `params.petId`
-  const pet = PET_DATA;
+  const [pet, setPet] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchPetProfile() {
+      try {
+        const petId = params.petId as string;
+        if (!petId) return;
+
+        // Traz as informações do animal com o dono (cliente)
+        const { data: petData, error: petError } = await supabase
+          .from('animais')
+          .select(`
+            *,
+            cliente:clientes(nome)
+          `)
+          .eq('id', petId)
+          .single();
+
+        if (petError) throw petError;
+
+        // Traz eventos médicos
+        const { data: eventos, error: eventosError } = await supabase
+          .from('eventos')
+          .select('*')
+          .eq('animal_id', petId)
+          .order('data', { ascending: false });
+
+        // Traz vacinas
+        const { data: vacinas, error: vacinasError } = await supabase
+          .from('vacinas')
+          .select('*')
+          .eq('animal_id', petId)
+          .order('data_aplicacao', { ascending: false });
+
+        // Consolidar Histórico
+        const history: any[] = [];
+        
+        if (vacinas) {
+          vacinas.forEach(v => {
+            history.push({
+              id: v.id,
+              type: 'vaccine',
+              date: new Date(v.data_aplicacao).toLocaleDateString('pt-BR'),
+              title: `Vacina: ${v.nome}`,
+              description: v.observacoes || `Fabricante: ${v.fabricante || '- '} | Lote: ${v.lote || '-'}`,
+              nextDose: v.data_reforco ? new Date(v.data_reforco).toLocaleDateString('pt-BR') : undefined,
+              attachments: [],
+              timestamp: new Date(v.data_aplicacao).getTime()
+            });
+          });
+        }
+
+        if (eventos) {
+          eventos.forEach(e => {
+            history.push({
+              id: e.id,
+              type: 'appointment',
+              date: new Date(e.data).toLocaleDateString('pt-BR'),
+              title: e.titulo,
+              description: e.descricao || 'Nenhuma descrição fornecida',
+              attachments: [],
+              timestamp: new Date(e.data).getTime()
+            });
+          });
+        }
+
+        // Ordena histórico geral pelo mais recente
+        history.sort((a: any, b: any) => b.timestamp - a.timestamp);
+
+        const ageCalculation = petData.data_nascimento 
+          ? new Date().getFullYear() - new Date(petData.data_nascimento).getFullYear() + " anos" 
+          : "Idade não info.";
+
+        const formattedPet = {
+          id: petData.id,
+          name: petData.nome,
+          species: petData.especie,
+          breed: petData.raca || 'Sem raça definida',
+          age: ageCalculation,
+          gender: petData.sexo === 'macho' ? 'M' : petData.sexo === 'femea' ? 'F' : '?',
+          weight: petData.peso_kg ? petData.peso_kg.toString() : '-',
+          clientName: petData.cliente?.nome || 'Desconhecido',
+          clientId: petData.cliente_id,
+          alerts: [], // Exigiria tabela própria ou JSON no metadata
+          history: history
+        };
+
+        setPet(formattedPet);
+      } catch (err) {
+        console.error('Erro ao buscar pet:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchPetProfile();
+  }, [params.petId]);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="flex flex-col items-center justify-center py-40">
+          <Loader2 className="animate-spin text-emerald-500 mb-4" size={40} />
+          <p className="text-slate-500 font-medium">Carregando ficha do animal...</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!pet) {
+    return (
+      <AppShell>
+        <div className="max-w-6xl mx-auto py-20 text-center">
+          <h2 className="text-2xl font-bold text-slate-800">Pet não encontrado</h2>
+          <button onClick={() => router.back()} className="mt-4 text-emerald-600 underline">Voltar</button>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -128,7 +203,7 @@ export default function DetalhePetPage() {
           <div className="space-y-4">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-4">Alertas Clínicos</h3>
             {pet.alerts.length > 0 ? (
-              pet.alerts.map((alert, i) => (
+              pet.alerts.map((alert: any, i: number) => (
                 <HealthAlert key={i} type={alert.type as any} label={alert.label} description={alert.description} />
               ))
             ) : (
@@ -154,7 +229,7 @@ export default function DetalhePetPage() {
             </div>
 
             <div className="timeline-container">
-               {pet.history.map((item) => (
+               {pet.history.map((item: any) => (
                  <PetHistoryItem 
                     key={item.id}
                     type={item.type}

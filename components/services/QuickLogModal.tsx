@@ -25,13 +25,21 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
   const [selectedVaccine, setSelectedVaccine] = useState<string>('');
   const [nextDoseDate, setNextDoseDate] = useState('');
   
-  // Atualiza a data da próxima dose quando a vacina ou a data atual mudam
-  useEffect(() => {
-    if (type === 'vaccine' && selectedVaccine) {
-      const nextDate = calculateNextDoseDate(selectedVaccine, new Date(date));
+  const handleVaccineChange = (v: string) => {
+    setSelectedVaccine(v);
+    if (v) {
+      const nextDate = calculateNextDoseDate(v, new Date(date));
       setNextDoseDate(formatToInputDate(nextDate));
     }
-  }, [selectedVaccine, date, type]);
+  };
+
+  const handleDateChange = (d: string) => {
+    setDate(d);
+    if (type === 'vaccine' && selectedVaccine) {
+      const nextDate = calculateNextDoseDate(selectedVaccine, new Date(d));
+      setNextDoseDate(formatToInputDate(nextDate));
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -104,7 +112,7 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
                     <select 
                       className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
                       value={selectedVaccine}
-                      onChange={(e) => setSelectedVaccine(e.target.value)}
+                      onChange={(e) => handleVaccineChange(e.target.value)}
                     >
                       <option value="">Selecione...</option>
                       {Object.keys(VACCINE_PROTOCOLS).map(v => (
@@ -146,7 +154,7 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
                   type="date"
                   className="w-full bg-transparent border-none p-0 text-slate-800 font-semibold focus:ring-0"
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) => handleDateChange(e.target.value)}
                 />
               </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { PetCard } from '@/components/pets/PetCard';
@@ -15,49 +15,87 @@ import {
   User,
   PawPrint,
   Clock,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
-
-// Mock data para o perfil do cliente
-const CLIENT_DATA = {
-  id: '1',
-  name: 'Douglas Medeiros',
-  phone: '(11) 98888-7777',
-  email: 'douglas@email.com',
-  address: 'Rua das Flores, 123 - Jardins, São Paulo',
-  petCount: 2,
-  pets: [
-    {
-      id: 'p1',
-      name: 'Thor',
-      species: 'Cão',
-      breed: 'Golden Retriever',
-      age: '3 anos',
-      gender: 'M',
-      alerts: [
-        { type: 'allergy', label: 'Alergia', description: 'Reação severa a Dipirona' },
-        { type: 'chronic', label: 'Condição', description: 'Displasia coxofemoral leve' }
-      ]
-    },
-    {
-      id: 'p2',
-      name: 'Luna',
-      species: 'Gato',
-      breed: 'Siamês',
-      age: '1 ano',
-      gender: 'F',
-      alerts: []
-    }
-  ]
-};
+import { supabase } from '@/lib/supabase';
 
 export default function DetalheClientePage() {
   const params = useParams();
   const router = useRouter();
   
-  // No mundo real, buscaríamos pelo id `params.id`
-  const client = CLIENT_DATA;
+  const [client, setClient] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchClientData() {
+      try {
+        const id = params.id as string;
+        if (!id) return;
+
+        const { data, error } = await supabase
+          .from('clientes')
+          .select(`
+            *,
+            animais (*)
+          `)
+          .eq('id', id)
+          .single();
+
+        if (error) throw error;
+
+        // Formata para o UI
+        const formattedClient = {
+          id: data.id,
+          name: data.nome,
+          phone: data.telefone || 'Não informado',
+          email: data.email || 'Não informado',
+          address: data.endereco || 'Não informado',
+          petCount: data.animais?.length || 0,
+          pets: data.animais?.map((a: any) => ({
+            id: a.id,
+            name: a.nome,
+            species: a.especie,
+            breed: a.raca || '-',
+            age: a.data_nascimento ? 'Data cadastrada' : 'Idade incerta',
+            gender: a.sexo === 'macho' ? 'M' : a.sexo === 'femea' ? 'F' : '-',
+            alerts: []
+          })) || []
+        };
+
+        setClient(formattedClient);
+      } catch (err) {
+        console.error('Erro ao buscar perfil do cliente:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchClientData();
+  }, [params.id]);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="flex flex-col items-center justify-center py-40">
+          <Loader2 className="animate-spin text-emerald-500 mb-4" size={40} />
+          <p className="text-slate-500 font-medium">Carregando perfil do tutor...</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!client) {
+    return (
+      <AppShell>
+        <div className="max-w-6xl mx-auto py-20 text-center">
+          <h2 className="text-2xl font-bold text-slate-800">Cliente não encontrado</h2>
+          <button onClick={() => router.push('/clientes')} className="mt-4 text-emerald-600 underline">Voltar para lista</button>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -138,7 +176,7 @@ export default function DetalheClientePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-10">
-            {client.pets.map((pet) => (
+            {client.pets.map((pet: any) => (
               <PetCard 
                 key={pet.id}
                 id={pet.id}

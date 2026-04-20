@@ -14,11 +14,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className="flex">
-        <Sidebar />
-        <main className="flex-1 h-screen overflow-y-auto bg-slate-50">
-          {children}
-        </main>
+      <body className="antialiased font-sans">
+        {children}
       </body>
     </html>
   );
