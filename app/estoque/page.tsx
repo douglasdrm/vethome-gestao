@@ -9,15 +9,14 @@ import {
   Package, 
   Plus, 
   Search, 
-  Filter, 
   AlertTriangle, 
   Calendar,
   Layers,
-  ArrowRight,
-  ClipboardList,
   TrendingDown,
   Barcode,
-  DollarSign
+  DollarSign,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { KPICard } from '@/components/finance/KPICard';
 import { supabase } from '@/lib/supabase';
@@ -25,8 +24,10 @@ import { addDays, isBefore, parseISO } from 'date-fns';
 
 export default function EstoquePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isStockOutModalOpen, setIsStockOutModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeCategory, setActiveCategory] = useState('Todos');
   const [loading, setLoading] = useState(true);
   const [inventory, setInventory] = useState<any[]>([]);
   const [stats, setStats] = useState({
@@ -43,7 +44,6 @@ export default function EstoquePage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Buscar preferência do usuário
       const { data: profile } = await supabase
         .from('perfis')
         .select('aviso_vencimento_dias')
@@ -60,10 +60,13 @@ export default function EstoquePage() {
 
       if (error) throw error;
 
-      const filtered = data.filter((item: any) => 
-        item.nome.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        item.codigo_barras?.includes(searchTerm)
-      );
+      // Filtro de Busca e Categoria
+      const filtered = data.filter((item: any) => {
+        const matchesSearch = item.nome.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             item.codigo_barras?.includes(searchTerm);
+        const matchesCategory = activeCategory === 'Todos' || item.categoria === activeCategory;
+        return matchesSearch && matchesCategory;
+      });
 
       let lowStockCount = 0;
       let expiringSoonCount = 0;
@@ -95,6 +98,7 @@ export default function EstoquePage() {
           totalQuantity: totalQty,
           unit: item.unidade,
           minQuantity: item.qtd_minima,
+          preco_custo: item.preco_custo,
           preco_venda: item.preco_venda,
           codigo_barras: item.codigo_barras,
           batches: formattedBatches
@@ -115,9 +119,42 @@ export default function EstoquePage() {
     }
   };
 
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Tem certeza que deseja excluir o produto "${name}"? Todos os lotes associados também serão apagados.`)) {
+      return;
+    }
+
+    try {
+      // 1. Deletar lotes primeiro (devido à FK)
+      const { error: batchError } = await supabase
+        .from('estoque_lotes')
+        .delete()
+        .eq('produto_id', id);
+      
+      if (batchError) throw batchError;
+
+      // 2. Deletar produto
+      const { error: prodError } = await supabase
+        .from('estoque')
+        .delete()
+        .eq('id', id);
+      
+      if (prodError) throw prodError;
+
+      fetchInventory();
+    } catch (err: any) {
+      alert('Erro ao excluir: ' + err.message);
+    }
+  };
+
+  const handleEdit = (product: any) => {
+    setSelectedProduct(product);
+    setIsModalOpen(true);
+  };
+
   useEffect(() => {
     fetchInventory();
-  }, [searchTerm]);
+  }, [searchTerm, activeCategory]);
 
   return (
     <AppShell>
@@ -144,7 +181,10 @@ export default function EstoquePage() {
               Registrar Saída
             </button>
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setSelectedProduct(null);
+                setIsModalOpen(true);
+              }}
               className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-[2rem] font-bold shadow-xl flex items-center gap-2 transition-all active:scale-95"
             >
               <Plus size={20} />
@@ -188,9 +228,15 @@ export default function EstoquePage() {
                 />
              </div>
              <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100">
-                <button className="px-4 py-2 bg-white text-slate-700 text-xs font-bold rounded-lg shadow-sm">Todos</button>
-                <button className="px-4 py-2 text-slate-400 text-xs font-bold hover:text-slate-600">Vacinas</button>
-                <button className="px-4 py-2 text-slate-400 text-xs font-bold hover:text-slate-600">Medicamentos</button>
+                {['Todos', 'Vacina', 'Medicamento'].map((cat) => (
+                  <button 
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeCategory === cat ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
              </div>
           </div>
 
@@ -200,25 +246,41 @@ export default function EstoquePage() {
                 <div className="flex flex-col lg:flex-row justify-between gap-8">
                   {/* Info do Produto */}
                   <div className="flex-1 max-w-md">
-                    <div className="flex items-center gap-3 mb-2">
-                       <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
-                         {product.category}
-                       </span>
-                       {product.totalQuantity <= product.minQuantity && (
-                         <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 flex items-center gap-1">
-                           <AlertTriangle size={10} />
-                           Estoque Baixo
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                         <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                           {product.category}
                          </span>
-                       )}
-                       {product.codigo_barras && (
-                         <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                            <Barcode size={14} />
-                            {product.codigo_barras}
-                         </span>
-                       )}
+                         {product.totalQuantity <= product.minQuantity && (
+                           <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 flex items-center gap-1">
+                             <AlertTriangle size={10} />
+                             Estoque Baixo
+                           </span>
+                         )}
+                      </div>
+                      
+                      {/* Ações Rápidas */}
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => handleEdit(product)}
+                          className="p-2 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 rounded-lg transition-colors"
+                          title="Editar Produto"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(product.id, product.name)}
+                          className="p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors"
+                          title="Excluir Produto"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
+
                     <h3 className="text-xl font-bold text-slate-800 mb-2">{product.name}</h3>
-                    <div className="flex items-center gap-6 text-sm font-medium">
+                    
+                    <div className="flex flex-wrap items-center gap-4 text-sm font-medium mb-4">
                        <div className="flex items-center gap-1.5 text-slate-500">
                          <Layers size={16} className="text-slate-300" />
                          <span>Total: <b className="text-slate-800">{product.totalQuantity} {product.unit}</b></span>
@@ -228,16 +290,19 @@ export default function EstoquePage() {
                          <span>Venda: <b className="text-emerald-600">R$ {product.preco_venda?.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</b></span>
                        </div>
                     </div>
+
+                    {product.codigo_barras && (
+                      <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg w-fit">
+                        <Barcode size={14} />
+                        {product.codigo_barras}
+                      </div>
+                    )}
                   </div>
 
                   {/* Gestão de Lotes */}
                   <div className="flex-[1.5]">
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Lotes no Sistema</h4>
-                      <button className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
-                        <Plus size={14} />
-                        Add Lote
-                      </button>
                     </div>
                     <BatchList batches={product.batches} />
                   </div>
@@ -257,6 +322,7 @@ export default function EstoquePage() {
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
         onSuccess={fetchInventory}
+        productToEdit={selectedProduct}
       />
 
       <StockOutModal

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Package, 
@@ -18,13 +18,13 @@ import { BarcodeScanner } from './BarcodeScanner';
 import { formatCurrencyInput, parseCurrencyString } from '@/lib/format';
 
 interface ProductModalProps {
-// ...
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  productToEdit?: any;
 }
 
-export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) {
+export function ProductModal({ isOpen, onClose, onSuccess, productToEdit }: ProductModalProps) {
   const [loading, setLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   
@@ -41,6 +41,36 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
     qtd_inicial: ''
   });
 
+  useEffect(() => {
+    if (productToEdit && isOpen) {
+      setFormData({
+        nome: productToEdit.name || '',
+        categoria: productToEdit.category || 'Vacina',
+        unidade: productToEdit.unit || 'un',
+        qtd_minima: productToEdit.minQuantity?.toString() || '',
+        preco_custo: productToEdit.preco_custo?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '',
+        preco_venda: productToEdit.preco_venda?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '',
+        codigo_barras: productToEdit.codigo_barras || '',
+        num_lote: '',
+        vencimento: '',
+        qtd_inicial: ''
+      });
+    } else if (isOpen) {
+      setFormData({
+        nome: '',
+        categoria: 'Vacina',
+        unidade: 'un',
+        qtd_minima: '',
+        preco_custo: '',
+        preco_venda: '',
+        codigo_barras: '',
+        num_lote: '',
+        vencimento: '',
+        qtd_inicial: ''
+      });
+    }
+  }, [productToEdit, isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,46 +81,64 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Sessão expirada. Faça login novamente.');
 
-      if (!formData.vencimento) {
-        throw new Error('A data de validade é obrigatória.');
+      if (!productToEdit && !formData.vencimento) {
+        throw new Error('A data de validade é obrigatória para o estoque inicial.');
       }
 
       const precoCusto = parseCurrencyString(formData.preco_custo);
       const precoVenda = parseCurrencyString(formData.preco_venda);
       const qtdInicialValue = parseFloat(formData.qtd_inicial || '0');
 
-      // 1. Inserir Produto
-      const { data: product, error: prodError } = await supabase
-        .from('estoque')
-        .insert([{
-          user_id: user.id,
-          nome: formData.nome,
-          categoria: formData.categoria,
-          unidade: formData.unidade,
-          qtd_minima: parseFloat(formData.qtd_minima || '0'),
-          preco_custo: precoCusto,
-          preco_venda: precoVenda,
-          codigo_barras: formData.codigo_barras
-        }])
-        .select()
-        .single();
+      if (productToEdit) {
+        // MODO EDIÇÃO
+        const { error: updateError } = await supabase
+          .from('estoque')
+          .update({
+            nome: formData.nome,
+            categoria: formData.categoria,
+            unidade: formData.unidade,
+            qtd_minima: parseFloat(formData.qtd_minima || '0'),
+            preco_custo: precoCusto,
+            preco_venda: precoVenda,
+            codigo_barras: formData.codigo_barras
+          })
+          .eq('id', productToEdit.id);
 
-      if (prodError) throw prodError;
-
-      // 2. Inserir Primeiro Lote
-      if (product) {
-        const { error: batchError } = await supabase
-          .from('estoque_lotes')
+        if (updateError) throw updateError;
+      } else {
+        // MODO CRIAÇÃO
+        const { data: product, error: prodError } = await supabase
+          .from('estoque')
           .insert([{
-            produto_id: product.id,
-            num_lote: formData.num_lote || 'Lote Inicial',
-            vencimento: formData.vencimento,
-            qtd_inicial: qtdInicialValue, 
-            qtd_atual: qtdInicialValue,   
-            user_id: user.id
-          }]);
-        
-        if (batchError) throw batchError;
+            user_id: user.id,
+            nome: formData.nome,
+            categoria: formData.categoria,
+            unidade: formData.unidade,
+            qtd_minima: parseFloat(formData.qtd_minima || '0'),
+            preco_custo: precoCusto,
+            preco_venda: precoVenda,
+            codigo_barras: formData.codigo_barras
+          }])
+          .select()
+          .single();
+
+        if (prodError) throw prodError;
+
+        // 2. Inserir Primeiro Lote (Apenas na criação)
+        if (product) {
+          const { error: batchError } = await supabase
+            .from('estoque_lotes')
+            .insert([{
+              produto_id: product.id,
+              num_lote: formData.num_lote || 'Lote Inicial',
+              vencimento: formData.vencimento,
+              qtd_inicial: qtdInicialValue, 
+              qtd_atual: qtdInicialValue,   
+              user_id: user.id
+            }]);
+          
+          if (batchError) throw batchError;
+        }
       }
 
       onSuccess();
@@ -128,8 +176,12 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
           <div className="p-8 pb-4 border-b border-slate-50">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Novo Produto</h2>
-                <p className="text-slate-400 text-sm font-medium">Cadastre o item e sua validade inicial.</p>
+                <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">
+                  {productToEdit ? 'Editar Produto' : 'Novo Produto'}
+                </h2>
+                <p className="text-slate-400 text-sm font-medium">
+                  {productToEdit ? 'Atualize os dados básicos do item.' : 'Cadastre o item e sua validade inicial.'}
+                </p>
               </div>
               <button 
                 onClick={onClose}
@@ -221,48 +273,50 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                   </select>
                 </div>
 
-                {/* Seção 2: Validade e Lote */}
-                <div className="md:col-span-2 pt-4">
-                  <div className="flex items-center gap-2 mb-4 text-amber-600">
-                    <div className="w-1 h-4 bg-amber-500 rounded-full" />
-                    <h3 className="text-sm font-black uppercase tracking-widest">Controle e Validade</h3>
+                {/* Seção 2: Validade e Lote (Apenas na Criação) */}
+                {!productToEdit && (
+                  <div className="md:col-span-2 pt-4">
+                    <div className="flex items-center gap-2 mb-4 text-amber-600">
+                      <div className="w-1 h-4 bg-amber-500 rounded-full" />
+                      <h3 className="text-sm font-black uppercase tracking-widest">Estoque Inicial</h3>
+                    </div>
+                    <div className="p-6 bg-amber-50 border border-amber-100 rounded-[2rem] grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="md:col-span-2">
+                         <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1">
+                           <AlertCircle size={14} /> Validade / Vencimento
+                         </label>
+                         <input 
+                          required={!productToEdit}
+                          type="date"
+                          className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 focus:ring-4 focus:ring-amber-500/10 outline-none font-black"
+                          value={formData.vencimento}
+                          onChange={e => setFormData({...formData, vencimento: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Nº do Lote</label>
+                        <input 
+                          type="text"
+                          placeholder="Opcional"
+                          className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 outline-none font-bold placeholder:text-amber-200"
+                          value={formData.num_lote}
+                          onChange={e => setFormData({...formData, num_lote: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Quantidade</label>
+                        <input 
+                          required={!productToEdit}
+                          type="number"
+                          placeholder="Ex: 10"
+                          className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 outline-none font-bold"
+                          value={formData.qtd_inicial}
+                          onChange={e => setFormData({...formData, qtd_inicial: e.target.value})}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="p-6 bg-amber-50 border border-amber-100 rounded-[2rem] grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="md:col-span-2">
-                       <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1">
-                         <AlertCircle size={14} /> Validade / Vencimento
-                       </label>
-                       <input 
-                        required
-                        type="date"
-                        className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 focus:ring-4 focus:ring-amber-500/10 outline-none font-black"
-                        value={formData.vencimento}
-                        onChange={e => setFormData({...formData, vencimento: e.target.value})}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Nº do Lote</label>
-                      <input 
-                        type="text"
-                        placeholder="Opcional"
-                        className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 outline-none font-bold placeholder:text-amber-200"
-                        value={formData.num_lote}
-                        onChange={e => setFormData({...formData, num_lote: e.target.value})}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Quantidade</label>
-                      <input 
-                        required
-                        type="number"
-                        placeholder="Ex: 10"
-                        className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 outline-none font-bold"
-                        value={formData.qtd_inicial}
-                        onChange={e => setFormData({...formData, qtd_inicial: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                </div>
+                )}
 
                 {/* Seção 3: Financeiro */}
                 <div className="md:col-span-2 pt-4">
@@ -304,14 +358,14 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
               >
                 Cancelar
               </button>
-              <button 
+                <button 
                 type="submit" 
                 form="product-form"
                 disabled={loading}
                 className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-3xl font-bold shadow-xl shadow-emerald-200 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
               >
                 {loading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                <span>Salvar Produto e Lote</span>
+                <span>{productToEdit ? 'Atualizar Produto' : 'Salvar Produto e Lote'}</span>
               </button>
             </div>
           </div>
