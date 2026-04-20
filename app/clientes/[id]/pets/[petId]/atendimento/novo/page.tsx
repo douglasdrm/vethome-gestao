@@ -10,6 +10,7 @@ import {
   Search, 
   Package, 
   Trash2, 
+  Camera, 
   Camera as ScanIcon, 
   DollarSign, 
   Loader2, 
