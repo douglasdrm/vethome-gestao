@@ -5,20 +5,24 @@ import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { VitalsForm } from '@/components/medical/VitalsForm';
 import { 
-  ArrowLeft, 
+  X, 
+  Upload, 
+  Search, 
+  Package, 
+  Trash2, 
+  Camera as ScanIcon, 
+  DollarSign, 
+  Loader2, 
   Save, 
+  ArrowLeft, 
   Stethoscope, 
   Calendar, 
-  DollarSign, 
-  Camera, 
-  Loader2,
-  Syringe,
-  FileText,
-  Plus
+  Plus, 
+  FileText, 
+  Syringe 
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { uploadFile } from '@/lib/storage';
-import { X, Upload, Search, Package, Trash2, Camera as ScanIcon, DollarSign, Loader2, Save, ArrowLeft, Stethoscope, Calendar, Plus, FileText, Syringe } from 'lucide-react';
 import { BarcodeScanner } from '@/components/inventory/BarcodeScanner';
 import { formatCurrencyInput, parseCurrencyString } from '@/lib/format';
 
