@@ -42,10 +42,18 @@ export default function DashboardPage() {
   const [schedule, setSchedule] = useState<any[]>([]);
   const [financialTarget] = useState(6000); 
   const [currentMonthRevenue, setCurrentMonthRevenue] = useState(0);
+  const [userName, setUserName] = useState('Veterinário');
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      
+      // 0. Pegar usuário logado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Veterinário');
+      }
+
       const today = new Date().toISOString().split('T')[0];
       const monthStart = startOfMonth(new Date()).toISOString();
 
@@ -134,7 +142,7 @@ export default function DashboardPage() {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">
-              {greeting}, Dra. Renata 👋
+              {greeting}, {userName} 👋
             </h2>
             <p className="text-sm text-slate-500 mt-1 font-medium capitalize">
               {dateStr}

@@ -2,14 +2,13 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase, signInWithGoogle, signInDemo } from '@/lib/supabase';
 import { 
   Mail, 
-  Lock, 
-  Loader2, 
   ArrowRight, 
   Stethoscope,
-  AlertCircle
+  AlertCircle,
+  Zap
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -18,6 +17,27 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  const handleGoogleLogin = async () => {
+    try {
+      setLoading(true);
+      await signInWithGoogle();
+    } catch (err: any) {
+      setError(err.message || 'Erro ao entrar com Google');
+      setLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    try {
+      setLoading(true);
+      await signInDemo();
+      router.push('/');
+    } catch (err: any) {
+      setError('A conta demo ainda não foi criada no Supabase. Crie demo@vethome.com com senha demo123456');
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,19 +113,43 @@ export default function LoginPage() {
             <button 
               type="submit"
               disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-5 rounded-[2rem] font-bold shadow-xl shadow-emerald-100 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-70 group"
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white p-5 rounded-[2rem] font-bold shadow-xl shadow-slate-200 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-70 group"
             >
               {loading ? <Loader2 size={24} className="animate-spin" /> : (
                 <>
-                  Acessar Sistema
+                  Entrar no Sistema
                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </>
               )}
             </button>
           </form>
 
-          <p className="text-center text-slate-400 text-xs mt-8 font-medium">
-            Exclusivo para médicos veterinários parceiros VetHome.
+          <div className="mt-8 space-y-4">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-4 text-slate-400 font-bold tracking-widest">Ou acesse com</span></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={handleGoogleLogin}
+                className="flex items-center justify-center gap-3 p-4 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-all font-bold text-slate-600 text-sm"
+              >
+                <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" />
+                Google
+              </button>
+              <button 
+                onClick={handleDemoLogin}
+                className="flex items-center justify-center gap-3 p-4 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 transition-all font-bold text-sm"
+              >
+                <Zap size={18} fill="currentColor" />
+                Modo Demo
+              </button>
+            </div>
+          </div>
+
+          <p className="text-center text-slate-400 text-sm mt-10 font-medium">
+            Não tem uma conta? <Link href="/register" className="text-emerald-600 font-bold hover:underline">Cadastre-se grátis</Link>
           </p>
         </div>
       </div>

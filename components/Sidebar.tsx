@@ -35,7 +35,19 @@ interface SidebarProps {
 export function Sidebar({ onQuickLog }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [isOpen, setIsOpen] = React.useState(true);
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  // Fecha o menu automaticamente ao trocar de rota no mobile
+  React.useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
+
+  // Garante que o menu comece fechado no mobile e aberto no desktop
+  React.useEffect(() => {
+    if (window.innerWidth >= 1024) {
+      setIsOpen(true);
+    }
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -52,11 +64,20 @@ export function Sidebar({ onQuickLog }: SidebarProps) {
         {isOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
 
+      {/* Backdrop Mobile */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-40 lg:hidden animate-in fade-in duration-300"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+      
       {/* Sidebar */}
       <aside className={`
-        fixed left-0 top-0 h-full bg-white border-r border-slate-200 z-40
+        fixed left-0 top-0 h-full bg-white border-r border-slate-200 z-50
         transition-all duration-300 ease-in-out
-        ${isOpen ? 'w-64' : 'w-0 -left-64'} lg:w-64 lg:static
+        ${isOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64'} 
+        lg:translate-x-0 lg:static lg:w-64
       `}>
         <div className="p-6 flex flex-col h-full">
           {/* Logo */}
