@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { supabase, signInWithGoogle, signInDemo } from '@/lib/supabase';
 import { 
   Mail, 
+  Lock, 
+  Loader2, 
   ArrowRight, 
   Stethoscope,
   AlertCircle,
