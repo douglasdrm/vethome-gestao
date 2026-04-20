@@ -1,0 +1,208 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { AppShell } from '@/components/AppShell';
+import { VitalsForm } from '@/components/medical/VitalsForm';
+import { 
+  ArrowLeft, 
+  Save, 
+  Stethoscope, 
+  Calendar, 
+  DollarSign, 
+  Camera, 
+  Loader2,
+  Syringe,
+  FileText,
+  Plus
+} from 'lucide-react';
+import Link from 'next/link';
+
+export default function NovoAtendimentoPage() {
+  const params = useParams();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [backlogMode, setBacklogMode] = useState(false);
+  
+  // Estados do formulário
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [anamnese, setAnamnese] = useState('');
+  const [conduta, setConduta] = useState('');
+  const [vitals, setVitals] = useState({
+    weight: '',
+    temp: '',
+    heartRate: '',
+    respRate: '',
+    tpc: '',
+    mucosas: ''
+  });
+  const [value, setValue] = useState('');
+  
+  const handleVitalsChange = (field: string, val: string) => {
+    setVitals(prev => ({ ...prev, [field]: val }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    // Simulação de persistência
+    setTimeout(() => {
+      setLoading(false);
+      router.back();
+    }, 1500);
+  };
+
+  return (
+    <AppShell>
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <button 
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-2 text-slate-500 hover:text-emerald-600 transition-colors mb-4 group"
+            >
+              <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+              <span>Voltar para o Pet</span>
+            </button>
+            <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+                <Stethoscope size={24} />
+              </div>
+              Novo Prontuário Clínico
+            </h1>
+          </div>
+
+          {/* Seletor de Data (Crucial para o backlog de 1 ano) */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Data do Atendimento</label>
+            <div className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${backlogMode ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+              <Calendar size={20} className={backlogMode ? 'text-amber-500' : 'text-slate-400'} />
+              <input 
+                type="date"
+                className="bg-transparent border-none p-0 text-slate-800 font-bold focus:ring-0 outline-none"
+                value={date}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  const isPast = new Date(e.target.value) < new Date(new Date().setHours(0,0,0,0));
+                  setBacklogMode(isPast);
+                }}
+              />
+            </div>
+            {backlogMode && (
+              <span className="text-[10px] font-bold text-amber-600 ml-1">Lançamento de Registro Passado</span>
+            )}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Seção 1: Anamnese e Conduta */}
+          <section className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+             <div>
+                <label className="block text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                  <FileText size={18} className="text-emerald-500" />
+                  Queixa Principal e Anamnese
+                </label>
+                <textarea 
+                  rows={4}
+                  placeholder="Relato do tutor, início dos sinais, comportamento..."
+                  className="w-full p-5 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
+                  value={anamnese}
+                  onChange={(e) => setAnamnese(e.target.value)}
+                ></textarea>
+             </div>
+
+             <div>
+                <label className="block text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                  <Plus size={18} className="text-emerald-500" />
+                  Diagnóstico e Conduta
+                </label>
+                <textarea 
+                  rows={4}
+                  placeholder="Suspeitas diagnósticas, exames solicitados, prescrição básica..."
+                  className="w-full p-5 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
+                  value={conduta}
+                  onChange={(e) => setConduta(e.target.value)}
+                ></textarea>
+             </div>
+          </section>
+
+          {/* Seção 2: Parâmetros Vitais (Opcionais) */}
+          <VitalsForm vitals={vitals} onChange={handleVitalsChange} />
+
+          {/* Seção 3: Procedimentos, Vacinas e Financeiro */}
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <Syringe size={20} className="text-emerald-500" />
+                    Vacinas Aplicadas
+                  </h3>
+                  <button type="button" className="text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg transition-colors">
+                    <Plus size={20} />
+                  </button>
+                </div>
+                <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-sm italic">
+                  Nenhuma vacina vinculada a este atendimento.
+                </div>
+                <button type="button" className="mt-4 w-full flex items-center justify-center gap-2 p-3 text-emerald-600 font-bold bg-emerald-50/50 rounded-xl hover:bg-emerald-50 transition-colors">
+                  <Camera size={18} />
+                  Anexar Foto do Rótulo
+                </button>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
+                  <DollarSign size={20} className="text-emerald-500" />
+                  Resumo Financeiro
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Valor Total (R$)</label>
+                    <input 
+                      type="number"
+                      placeholder="0,00"
+                      className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-bold text-xl text-emerald-600"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Status de Pagamento</label>
+                    <select className="w-full p-4 rounded-xl border border-slate-200 bg-white focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold">
+                      <option value="pago">Pago</option>
+                      <option value="pendente">Pendente</option>
+                      <option value="parcial">Parcial</option>
+                    </select>
+                  </div>
+                </div>
+            </div>
+          </section>
+
+          {/* Botões de Ação */}
+          <div className="flex gap-4 pt-4">
+            <button 
+              type="button" 
+              onClick={() => router.back()}
+              className="flex-1 px-8 py-5 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-5 rounded-3xl font-bold shadow-xl shadow-emerald-200 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-70 text-lg"
+            >
+              {loading ? (
+                <Loader2 className="animate-spin" size={24} />
+              ) : (
+                <Save size={24} />
+              )}
+              <span>Finalizar Prontuário</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </AppShell>
+  );
+}

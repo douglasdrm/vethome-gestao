@@ -116,32 +116,56 @@ CREATE TABLE IF NOT EXISTS public.modelos_mensagem (
 -- LOGICA DE NEGOCIO (FUNCTIONS & TRIGGERS)
 -- ####################
 
--- Função para gerar evento automaticamente
+-- 1. Função genérica para gerar evento na timeline
 CREATE OR REPLACE FUNCTION public.fn_gerar_evento()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_titulo TEXT;
+    v_animal_id UUID;
+    v_user_id UUID;
 BEGIN
-    INSERT INTO public.eventos (user_id, animal_id, tipo, titulo, descricao, data, metadata, referencia_id)
+    v_animal_id := NEW.animal_id;
+    v_user_id := NEW.user_id;
+
+    -- Definir título baseado no tipo
+    IF TG_ARGV[0] = 'atendimento' THEN
+        v_titulo := 'Atendimento Clínico';
+    ELSIF TG_ARGV[0] = 'vacina' THEN
+        v_titulo := 'Vacinação: ' || NEW.nome;
+    ELSIF TG_ARGV[0] = 'peso' THEN
+        v_titulo := 'Pesagem: ' || NEW.peso_atual || 'kg';
+    ELSE
+        v_titulo := 'Registro de ' || TG_ARGV[0];
+    END IF;
+
+    INSERT INTO public.eventos (user_id, animal_id, tipo, titulo, descricao, data, referencia_id)
     VALUES (
-        NEW.user_id,
-        NEW.animal_id,
-        TG_ARGV[0], -- Tipo passado no trigger
-        NEW.nome || ' - ' || TG_ARGV[0], -- Titulo simples
+        v_user_id,
+        v_animal_id,
+        TG_ARGV[0],
+        v_titulo,
         COALESCE(NEW.descricao, ''),
         now(),
-        '{}'::jsonb,
         NEW.id
     );
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Função para gerar financeiro automático vindo de atendimento
+-- 2. Função para gerar financeiro automático
 CREATE OR REPLACE FUNCTION public.fn_gerar_financeiro_atendimento()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.valor > 0 THEN
         INSERT INTO public.financeiro (user_id, tipo, valor, data, descricao, atendimento_id)
-        VALUES (NEW.user_id, 'entrada', NEW.valor, NEW.data, 'Atendimento: ' || NEW.descricao, NEW.id);
+        VALUES (
+            NEW.user_id, 
+            'entrada', 
+            NEW.valor, 
+            COALESCE(NEW.data, now()), 
+            'Atendimento: ' || LEFT(NEW.descricao, 50), 
+            NEW.id
+        );
     END IF;
     RETURN NEW;
 END;
@@ -161,12 +185,22 @@ ALTER TABLE public.agenda ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.financeiro ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.modelos_mensagem ENABLE ROW LEVEL SECURITY;
 
+-- Políticas unificadas (Simplified)
+CREATE POLICY "Acesso total dono" ON public.clientes FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Acesso total dono" ON public.animais FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Acesso total dono" ON public.eventos FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Acesso total dono" ON public.atendimentos FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Acesso total dono" ON public.vacinas FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Acesso total dono" ON public.agenda FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Acesso total dono" ON public.financeiro FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Acesso total dono" ON public.modelos_mensagem FOR ALL USING (auth.uid() = user_id);
+
 -- ####################
 -- GATILHOS (TRIGGERS)
 -- ####################
 
--- 1. Trigger para Atendimentos (Timeline + Financeiro)
-CREATE TRIGGER trg_atendimento_evento
+-- Atendimentos
+CREATE TRIGGER trg_atendimento_timeline
 AFTER INSERT ON public.atendimentos
 FOR EACH ROW EXECUTE PROCEDURE public.fn_gerar_evento('atendimento');
 
@@ -174,10 +208,45 @@ CREATE TRIGGER trg_atendimento_financeiro
 AFTER INSERT ON public.atendimentos
 FOR EACH ROW EXECUTE PROCEDURE public.fn_gerar_financeiro_atendimento();
 
--- 2. Trigger para Vacinas (Timeline)
-CREATE TRIGGER trg_vacina_evento
+-- Vacinas
+CREATE TRIGGER trg_vacina_timeline
 AFTER INSERT ON public.vacinas
 FOR EACH ROW EXECUTE PROCEDURE public.fn_gerar_evento('vacina');
 
--- 3. Trigger para Agenda (Timeline ao concluir?)
--- Opcional: Gerar evento quando o status muda para 'concluido'
+-- ####################
+-- FUNÇÕES RPC (INTERFACE DA APLICAÇÃO)
+-- ####################
+
+-- Função para registrar atendimento rápido
+CREATE OR REPLACE FUNCTION public.registrar_atendimento_completo(
+    p_animal_id UUID,
+    p_descricao TEXT,
+    p_procedimentos TEXT,
+    p_valor DECIMAL,
+    p_forma_pagamento TEXT,
+    p_status_pagamento TEXT
+) RETURNS UUID AS $$
+DECLARE
+    v_atendimento_id UUID;
+BEGIN
+    INSERT INTO public.atendimentos (
+        user_id, 
+        animal_id, 
+        descricao, 
+        procedimentos, 
+        valor, 
+        forma_pagamento, 
+        pagamento_status
+    ) VALUES (
+        auth.uid(),
+        p_animal_id,
+        p_descricao,
+        p_procedimentos,
+        p_valor,
+        p_forma_pagamento,
+        p_status_pagamento
+    ) RETURNING id INTO v_atendimento_id;
+
+    RETURN v_atendimento_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
