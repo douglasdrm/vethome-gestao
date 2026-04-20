@@ -23,19 +23,21 @@ const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
   { icon: Users, label: 'Clientes', href: '/clientes' },
   { icon: Calendar, label: 'Agenda', href: '/agenda' },
+  { icon: Stethoscope, label: 'Serviços & Preços', href: '/servicos' },
   { icon: Package, label: 'Estoque', href: '/estoque' },
   { icon: DollarSign, label: 'Financeiro', href: '/financeiro' },
   { icon: Settings, label: 'Configurações', href: '/configuracoes' },
 ];
 
 interface SidebarProps {
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
   onQuickLog?: () => void;
 }
 
-export function Sidebar({ onQuickLog }: SidebarProps) {
+export function Sidebar({ isOpen, setIsOpen, onQuickLog }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [isOpen, setIsOpen] = React.useState(false);
 
   // Fecha o menu automaticamente ao trocar de rota no mobile
   React.useEffect(() => {
@@ -56,13 +58,6 @@ export function Sidebar({ onQuickLog }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile Toggle */}
-      <button 
-        className="mobile-toggle lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-md shadow-md"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
 
       {/* Backdrop Mobile */}
       {isOpen && (

@@ -15,7 +15,8 @@ import {
   Search,
   Zap,
   Loader2,
-  Package
+  Package,
+  Menu
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { QuickLogModal } from './services/QuickLogModal';
@@ -33,12 +34,21 @@ const pageTitles: Record<string, string> = {
 interface TopbarProps {
   title: string;
   onQuickLog: () => void;
+  onMenuClick: () => void;
 }
 
-function Topbar({ title, onQuickLog }: TopbarProps) {
+function Topbar({ title, onQuickLog, onMenuClick }: TopbarProps) {
   return (
-    <header className="h-20 bg-white border-b border-slate-200 px-6 lg:px-8 flex items-center justify-between z-10 shrink-0">
-      <h1 className="text-xl lg:text-2xl font-bold text-slate-800">{title}</h1>
+    <header className="h-20 bg-white border-b border-slate-200 px-6 lg:px-8 flex items-center justify-between z-10 shrink-0 gap-4">
+      <div className="flex items-center gap-4">
+        <button 
+          onClick={onMenuClick}
+          className="lg:hidden p-2 hover:bg-slate-50 rounded-xl text-slate-500 transition-colors"
+        >
+          <Menu size={24} />
+        </button>
+        <h1 className="text-xl lg:text-2xl font-bold text-slate-800">{title}</h1>
+      </div>
 
       <div className="hidden md:flex items-center gap-3 bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl flex-1 max-w-md mx-6">
         <Search size={18} className="text-slate-400 shrink-0" />
@@ -72,6 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -113,10 +124,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar onQuickLog={() => setIsQuickLogOpen(true)} />
+      <Sidebar 
+        isOpen={isMenuOpen} 
+        setIsOpen={setIsMenuOpen} 
+        onQuickLog={() => setIsQuickLogOpen(true)} 
+      />
       
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Topbar title={currentTitle} onQuickLog={() => setIsQuickLogOpen(true)} />
+        <Topbar 
+          title={currentTitle} 
+          onQuickLog={() => setIsQuickLogOpen(true)}
+          onMenuClick={() => setIsMenuOpen(!isMenuOpen)}
+        />
         
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           {children}
