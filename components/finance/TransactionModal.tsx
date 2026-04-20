@@ -3,34 +3,70 @@
 import React, { useState } from 'react';
 import { 
   X, 
-  DollarSign, 
-  Calendar, 
-  Tag, 
-  FileText, 
-  Save, 
-  Loader2,
   ArrowUpCircle,
-  ArrowDownCircle
+  ArrowDownCircle,
+  FileText,
+  Tag,
+  Calendar,
+  Save,
+  Loader2
 } from 'lucide-react';
+import { formatCurrencyInput, parseCurrencyString } from '@/lib/format';
+import { supabase } from '@/lib/supabase';
 
 interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export function TransactionModal({ isOpen, onClose }: TransactionModalProps) {
+export function TransactionModal({ isOpen, onClose, onSuccess }: TransactionModalProps) {
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState<'Entrada' | 'Saída'>('Saída');
+  const [formData, setFormData] = useState({
+    valor: '',
+    descricao: '',
+    categoria: 'Atendimento',
+    data: new Date().toISOString().split('T')[0]
+  });
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { error } = await supabase
+        .from('financeiro')
+        .insert([{
+          user_id: user.id,
+          tipo: type === 'Entrada' ? 'Receita' : 'Despesa',
+          valor: parseCurrencyString(formData.valor),
+          descricao: formData.descricao,
+          categoria: formData.categoria,
+          data_vencimento: formData.data,
+          status: type === 'Entrada' ? 'Pendente' : 'Pago'
+        }]);
+
+      if (error) throw error;
+
+      onSuccess?.();
       onClose();
-    }, 1000);
+      setFormData({
+        valor: '',
+        descricao: '',
+        categoria: 'Atendimento',
+        data: new Date().toISOString().split('T')[0]
+      });
+    } catch (err: any) {
+      alert('Erro ao salvar: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -46,7 +82,7 @@ export function TransactionModal({ isOpen, onClose }: TransactionModalProps) {
         <div className="p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-2xl font-extrabold text-slate-800">Novo Lançamento</h2>
+              <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Novo Lançamento</h2>
               <p className="text-slate-400 text-sm font-medium">Registre uma receita ou despesa manual.</p>
             </div>
             <button 
@@ -81,15 +117,16 @@ export function TransactionModal({ isOpen, onClose }: TransactionModalProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                {/* Valor */}
                <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Valor do Lançamento</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1 text-center">Valor do Lançamento</label>
                 <div className="relative group">
-                  <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold ${type === 'Entrada' ? 'text-emerald-600' : 'text-rose-600'}`}>R$</span>
+                  <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold text-2xl ${type === 'Entrada' ? 'text-emerald-600' : 'text-rose-600'}`}>R$</span>
                   <input 
                     required
-                    type="number"
-                    step="0.01"
+                    type="text"
                     placeholder="0,00"
-                    className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-black text-xl"
+                    className="w-full pl-16 pr-4 py-6 rounded-3xl border border-slate-200 bg-slate-50 focus:ring-8 focus:ring-emerald-500/5 focus:border-emerald-500 outline-none transition-all font-black text-4xl text-slate-800 text-center"
+                    value={formData.valor}
+                    onChange={(e) => setFormData({ ...formData, valor: formatCurrencyInput(e.target.value) })}
                   />
                 </div>
               </div>
@@ -104,6 +141,8 @@ export function TransactionModal({ isOpen, onClose }: TransactionModalProps) {
                     type="text"
                     placeholder="Ex: Combustível, Materiais Cirúrgicos..."
                     className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold"
+                    value={formData.descricao}
+                    onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
                   />
                 </div>
               </div>
@@ -113,7 +152,11 @@ export function TransactionModal({ isOpen, onClose }: TransactionModalProps) {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Categoria</label>
                 <div className="relative group">
                   <Tag size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                  <select className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold appearance-none">
+                  <select 
+                    className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold appearance-none"
+                    value={formData.categoria}
+                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                  >
                     <option value="Atendimento">Atendimento</option>
                     <option value="Insumos">Insumos/Produtos</option>
                     <option value="Logistica">Logística/⛽</option>
@@ -131,8 +174,9 @@ export function TransactionModal({ isOpen, onClose }: TransactionModalProps) {
                   <Calendar size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                   <input 
                     type="date"
-                    defaultValue={new Date().toISOString().split('T')[0]}
                     className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold"
+                    value={formData.data}
+                    onChange={(e) => setFormData({ ...formData, data: e.target.value })}
                   />
                 </div>
               </div>

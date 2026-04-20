@@ -15,8 +15,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { BarcodeScanner } from './BarcodeScanner';
+import { formatCurrencyInput, parseCurrencyString } from '@/lib/format';
 
 interface ProductModalProps {
+// ...
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -34,13 +36,10 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
     preco_custo: '',
     preco_venda: '',
     codigo_barras: '',
-    // Novos campos para o primeiro lote
     num_lote: '',
     vencimento: '',
     qtd_inicial: ''
   });
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +53,10 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
         throw new Error('A data de validade é obrigatória.');
       }
 
+      const precoCusto = parseCurrencyString(formData.preco_custo);
+      const precoVenda = parseCurrencyString(formData.preco_venda);
+      const qtdInicialValue = parseFloat(formData.qtd_inicial || '0');
+
       // 1. Inserir Produto
       const { data: product, error: prodError } = await supabase
         .from('estoque')
@@ -63,8 +66,8 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
           categoria: formData.categoria,
           unidade: formData.unidade,
           qtd_minima: parseFloat(formData.qtd_minima || '0'),
-          preco_custo: parseFloat(formData.preco_custo || '0'),
-          preco_venda: parseFloat(formData.preco_venda || '0'),
+          preco_custo: precoCusto,
+          preco_venda: precoVenda,
           codigo_barras: formData.codigo_barras
         }])
         .select()
@@ -80,7 +83,8 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
             produto_id: product.id,
             num_lote: formData.num_lote || 'Lote Inicial',
             vencimento: formData.vencimento,
-            qtd_atual: parseFloat(formData.qtd_inicial || '0'),
+            qtd_inicial: qtdInicialValue, 
+            qtd_atual: qtdInicialValue,   
             user_id: user.id
           }]);
         
@@ -215,7 +219,7 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                   </select>
                 </div>
 
-                {/* Seção 2: Validade e Lote (NOVO) */}
+                {/* Seção 2: Validade e Lote */}
                 <div className="md:col-span-2 pt-4">
                   <div className="flex items-center gap-2 mb-4 text-amber-600">
                     <div className="w-1 h-4 bg-amber-500 rounded-full" />
@@ -245,7 +249,7 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Qtd. Inicial</label>
+                      <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Quantidade</label>
                       <input 
                         required
                         type="number"
@@ -269,19 +273,19 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Custo (R$)</label>
                   <input 
-                    type="number" step="0.01" placeholder="0,00"
+                    type="text" placeholder="0,00"
                     className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold"
                     value={formData.preco_custo}
-                    onChange={e => setFormData({...formData, preco_custo: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, preco_custo: formatCurrencyInput(e.target.value) })}
                   />
                 </div>
                 <div>
                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Venda (R$)</label>
                    <input 
-                    type="number" step="0.01" placeholder="0,00"
+                    type="text" placeholder="0,00"
                     className="w-full p-4 rounded-2xl border border-slate-200 bg-emerald-50/30 text-emerald-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-black"
                     value={formData.preco_venda}
-                    onChange={e => setFormData({...formData, preco_venda: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, preco_venda: formatCurrencyInput(e.target.value) })}
                   />
                 </div>
               </div>

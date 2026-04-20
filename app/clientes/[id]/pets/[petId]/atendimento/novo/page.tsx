@@ -16,11 +16,11 @@ import {
   FileText,
   Plus
 } from 'lucide-react';
-import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { uploadFile } from '@/lib/storage';
-import { X, Upload, Search, Package, Trash2, Camera as ScanIcon } from 'lucide-react';
+import { X, Upload, Search, Package, Trash2, Camera as ScanIcon, DollarSign, Loader2, Save, ArrowLeft, Stethoscope, Calendar, Plus, FileText, Syringe } from 'lucide-react';
 import { BarcodeScanner } from '@/components/inventory/BarcodeScanner';
+import { formatCurrencyInput, parseCurrencyString } from '@/lib/format';
 
 export default function NovoAtendimentoPage() {
   const params = useParams();
@@ -119,6 +119,7 @@ export default function NovoAtendimentoPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Sessão expirada. Faça login novamente.');
 
+      const numericValue = parseCurrencyString(value);
       const animalId = params.petId as string;
       const clienteId = params.id as string;
       const atendimentoData = {
@@ -131,7 +132,7 @@ export default function NovoAtendimentoPage() {
         diagnostico: conduta,
         peso_kg: vitals.weight ? parseFloat(vitals.weight) : null,
         temperatura: vitals.temp ? parseFloat(vitals.temp) : null,
-        valor: value ? parseFloat(value) : 0,
+        valor: numericValue,
         status_pagamento: 'pago' as any,
         foto_url: fotoUrl || null,
         observacoes: `FC: ${vitals.heartRate || '-'} | FR: ${vitals.respRate || '-'} | TPC: ${vitals.tpc || '-'} | Mucosas: ${vitals.mucosas || '-'}`
@@ -155,14 +156,14 @@ export default function NovoAtendimentoPage() {
       }
 
       // 3. Gerar Lançamento Financeiro se houver valor
-      if (value && parseFloat(value) > 0) {
+      if (numericValue > 0) {
         await supabase
           .from('financeiro')
           .insert([{
             user_id: user.id,
             tipo: 'receita',
             descricao: `Atendimento - ${anamnese.substring(0, 30)}...`,
-            valor: parseFloat(value),
+            valor: numericValue,
             data: date,
             status: 'pago',
             atendimento_id: appointment.id,
@@ -434,11 +435,11 @@ export default function NovoAtendimentoPage() {
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Valor Total (R$)</label>
                     <input 
-                      type="number"
+                      type="text"
                       placeholder="0,00"
                       className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-bold text-xl text-emerald-600"
                       value={value}
-                      onChange={(e) => setValue(e.target.value)}
+                      onChange={(e) => setValue(formatCurrencyInput(e.target.value))}
                     />
                   </div>
                   <div>
