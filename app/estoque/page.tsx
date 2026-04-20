@@ -34,11 +34,25 @@ export default function EstoquePage() {
     lowStock: 0,
     expiringSoon: 0
   });
+  const [alertDays, setAlertDays] = useState(30);
 
   const fetchInventory = async () => {
     try {
       setLoading(true);
       
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Buscar preferência do usuário
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('aviso_vencimento_dias')
+        .eq('id', user.id)
+        .single();
+      
+      const threshold = profile?.aviso_vencimento_dias || 30;
+      setAlertDays(threshold);
+
       const { data, error } = await supabase
         .from('estoque')
         .select('*, estoque_lotes (*)')
@@ -54,7 +68,7 @@ export default function EstoquePage() {
       let lowStockCount = 0;
       let expiringSoonCount = 0;
       const now = new Date();
-      const in30Days = addDays(now, 30);
+      const inAlertRange = addDays(now, threshold);
 
       const formatted = filtered.map((item: any) => {
         const totalQty = item.estoque_lotes?.reduce((acc: number, b: any) => acc + Number(b.qtd_atual), 0) || 0;
@@ -63,7 +77,7 @@ export default function EstoquePage() {
 
         const formattedBatches = item.estoque_lotes?.map((b: any) => {
           const expiry = parseISO(b.vencimento);
-          if (isBefore(expiry, in30Days)) expiringSoonCount++;
+          if (isBefore(expiry, inAlertRange)) expiringSoonCount++;
           
           return {
             id: b.id,

@@ -33,7 +33,11 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
     qtd_minima: '',
     preco_custo: '',
     preco_venda: '',
-    codigo_barras: ''
+    codigo_barras: '',
+    // Novos campos para o primeiro lote
+    num_lote: '',
+    vencimento: '',
+    qtd_inicial: ''
   });
 
   if (!isOpen) return null;
@@ -46,7 +50,12 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Sessão expirada. Faça login novamente.');
 
-      const { error } = await supabase
+      if (!formData.vencimento) {
+        throw new Error('A data de validade é obrigatória.');
+      }
+
+      // 1. Inserir Produto
+      const { data: product, error: prodError } = await supabase
         .from('estoque')
         .insert([{
           user_id: user.id,
@@ -57,9 +66,26 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
           preco_custo: parseFloat(formData.preco_custo || '0'),
           preco_venda: parseFloat(formData.preco_venda || '0'),
           codigo_barras: formData.codigo_barras
-        }]);
+        }])
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (prodError) throw prodError;
+
+      // 2. Inserir Primeiro Lote
+      if (product) {
+        const { error: batchError } = await supabase
+          .from('estoque_lotes')
+          .insert([{
+            produto_id: product.id,
+            num_lote: formData.num_lote || 'Lote Inicial',
+            vencimento: formData.vencimento,
+            qtd_atual: parseFloat(formData.qtd_inicial || '0'),
+            user_id: user.id
+          }]);
+        
+        if (batchError) throw batchError;
+      }
 
       onSuccess();
       onClose();
@@ -71,7 +97,10 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
         qtd_minima: '',
         preco_custo: '',
         preco_venda: '',
-        codigo_barras: ''
+        codigo_barras: '',
+        num_lote: '',
+        vencimento: '',
+        qtd_inicial: ''
       });
     } catch (err: any) {
       alert('Erro ao salvar produto: ' + err.message);
@@ -88,12 +117,13 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
           onClick={onClose}
         />
 
-        <div className="relative w-full max-w-xl bg-white rounded-[3rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-          <div className="p-8">
-            <div className="flex items-center justify-between mb-8">
+        <div className="relative w-full max-w-xl bg-white rounded-[3rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 max-h-[90vh] flex flex-col">
+          {/* Header Fixo */}
+          <div className="p-8 pb-4 border-b border-slate-50">
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-extrabold text-slate-800">Novo Produto</h2>
-                <p className="text-slate-400 text-sm font-medium">Cadastre um item no catálogo de estoque.</p>
+                <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Novo Produto</h2>
+                <p className="text-slate-400 text-sm font-medium">Cadastre o item e sua validade inicial.</p>
               </div>
               <button 
                 onClick={onClose}
@@ -102,10 +132,21 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                 <X size={24} />
               </button>
             </div>
+          </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Área com Scroll */}
+          <div className="flex-1 overflow-y-auto p-8 pt-6 custom-scrollbar">
+            <form id="product-form" onSubmit={handleSubmit} className="space-y-6 pb-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Nome do Produto */}
+                
+                {/* Seção 1: Dados Básicos */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-1 h-4 bg-emerald-500 rounded-full" />
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Informações Básicas</h3>
+                  </div>
+                </div>
+
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Nome do Item</label>
                   <div className="relative group">
@@ -121,7 +162,6 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                   </div>
                 </div>
 
-                {/* Código de Barras */}
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Código de Barras (EAN)</label>
                   <div className="flex gap-2">
@@ -132,7 +172,7 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                         value={formData.codigo_barras}
                         onChange={e => setFormData({...formData, codigo_barras: e.target.value})}
                         placeholder="Clique na câmera para bipar"
-                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold"
+                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold uppercase font-mono"
                       />
                     </div>
                     <button 
@@ -145,11 +185,10 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                   </div>
                 </div>
 
-                {/* Categoria */}
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Categoria</label>
                   <select 
-                    className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold appearance-none"
+                    className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold"
                     value={formData.categoria}
                     onChange={e => setFormData({...formData, categoria: e.target.value})}
                   >
@@ -161,11 +200,10 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                   </select>
                 </div>
 
-                {/* Unidade */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Unidade de Medida</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Unidade</label>
                   <select 
-                    className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold appearance-none"
+                    className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all font-semibold"
                     value={formData.unidade}
                     onChange={e => setFormData({...formData, unidade: e.target.value})}
                   >
@@ -177,7 +215,57 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                   </select>
                 </div>
 
-                {/* Preços */}
+                {/* Seção 2: Validade e Lote (NOVO) */}
+                <div className="md:col-span-2 pt-4">
+                  <div className="flex items-center gap-2 mb-4 text-amber-600">
+                    <div className="w-1 h-4 bg-amber-500 rounded-full" />
+                    <h3 className="text-sm font-black uppercase tracking-widest">Controle e Validade</h3>
+                  </div>
+                  <div className="p-6 bg-amber-50 border border-amber-100 rounded-[2rem] grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2">
+                       <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1">
+                         <AlertCircle size={14} /> Validade / Vencimento
+                       </label>
+                       <input 
+                        required
+                        type="date"
+                        className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 focus:ring-4 focus:ring-amber-500/10 outline-none font-black"
+                        value={formData.vencimento}
+                        onChange={e => setFormData({...formData, vencimento: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Nº do Lote</label>
+                      <input 
+                        type="text"
+                        placeholder="Opcional"
+                        className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 outline-none font-bold placeholder:text-amber-200"
+                        value={formData.num_lote}
+                        onChange={e => setFormData({...formData, num_lote: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 ml-1">Qtd. Inicial</label>
+                      <input 
+                        required
+                        type="number"
+                        placeholder="Ex: 10"
+                        className="w-full p-4 rounded-2xl border border-amber-200 bg-white text-amber-900 outline-none font-bold"
+                        value={formData.qtd_inicial}
+                        onChange={e => setFormData({...formData, qtd_inicial: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seção 3: Financeiro */}
+                <div className="md:col-span-2 pt-4">
+                  <div className="flex items-center gap-2 mb-4 text-emerald-600">
+                    <div className="w-1 h-4 bg-emerald-500 rounded-full" />
+                    <h3 className="text-sm font-black uppercase tracking-widest">Financeiro</h3>
+                  </div>
+                </div>
+                
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Custo (R$)</label>
                   <input 
@@ -197,25 +285,29 @@ export function ProductModal({ isOpen, onClose, onSuccess }: ProductModalProps) 
                   />
                 </div>
               </div>
-
-              <div className="pt-4 flex gap-4">
-                <button 
-                  type="button" 
-                  onClick={onClose}
-                  className="flex-1 px-8 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-3xl font-bold shadow-xl shadow-emerald-200 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
-                >
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                  <span>Salvar Produto</span>
-                </button>
-              </div>
             </form>
+          </div>
+
+          {/* Footer Fixo */}
+          <div className="p-8 border-t border-slate-50 bg-slate-50/30 rounded-b-[3rem]">
+            <div className="flex gap-4">
+              <button 
+                type="button" 
+                onClick={onClose}
+                className="flex-1 px-8 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit" 
+                form="product-form"
+                disabled={loading}
+                className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-3xl font-bold shadow-xl shadow-emerald-200 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+              >
+                {loading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                <span>Salvar Produto e Lote</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

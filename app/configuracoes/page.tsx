@@ -30,7 +30,8 @@ export default function ConfiguracoesPage() {
     crmv: '',
     whatsapp_padrao: '',
     email: '',
-    avatar_url: ''
+    avatar_url: '',
+    aviso_vencimento_dias: 30
   });
 
   const fetchProfile = async () => {
@@ -56,7 +57,8 @@ export default function ConfiguracoesPage() {
           crmv: profile.crmv || '',
           whatsapp_padrao: profile.whatsapp_padrao || '',
           email: user.email || '',
-          avatar_url: profile.avatar_url || ''
+          avatar_url: profile.avatar_url || '',
+          aviso_vencimento_dias: profile.aviso_vencimento_dias || 30
         });
       }
     } catch (err) {
@@ -125,6 +127,7 @@ export default function ConfiguracoesPage() {
           nome: formData.nome,
           crmv: formData.crmv,
           whatsapp_padrao: formData.whatsapp_padrao,
+          aviso_vencimento_dias: parseInt(formData.aviso_vencimento_dias.toString()),
           updated_at: new Date().toISOString()
         });
 
@@ -291,6 +294,24 @@ export default function ConfiguracoesPage() {
                         className="w-full pl-12 pr-4 py-4 bg-slate-100 border border-slate-100 rounded-2xl cursor-not-allowed font-bold"
                         value={formData.email}
                       />
+                    </div>
+                  </div>
+
+                  {/* Alertas de Estoque */}
+                  <div className="space-y-2 md:col-span-2 pt-6 border-t border-slate-50">
+                    <label className="text-xs font-black text-amber-600 uppercase tracking-widest ml-1">Configuração de Alertas</label>
+                    <div className="p-6 bg-amber-50 rounded-[2rem] border border-amber-100/50">
+                       <label className="block text-sm font-bold text-slate-700 mb-2">Avisar vencimento de produtos com antecedência de:</label>
+                       <div className="flex items-center gap-4">
+                          <input 
+                            type="number"
+                            className="w-24 p-4 rounded-xl border border-amber-200 bg-white text-center font-black text-lg text-amber-600"
+                            value={formData.aviso_vencimento_dias}
+                            onChange={e => setFormData({...formData, aviso_vencimento_dias: parseInt(e.target.value || '0')})}
+                          />
+                          <span className="font-bold text-slate-500 uppercase text-xs tracking-widest">Dias</span>
+                       </div>
+                       <p className="text-[10px] text-amber-700/60 font-medium mt-3 italic">* Itens com validade menor que este período serão destacados em amarelo no estoque.</p>
                     </div>
                   </div>
                 </div>

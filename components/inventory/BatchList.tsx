@@ -19,15 +19,16 @@ interface Batch {
 
 interface BatchListProps {
   batches: Batch[];
+  threshold?: number;
 }
 
-export function BatchList({ batches }: BatchListProps) {
+export function BatchList({ batches, threshold = 30 }: BatchListProps) {
   return (
     <div className="space-y-3">
       {batches.map((batch) => {
         const expiry = parseISO(batch.expiryDate);
         const isExpired = isBefore(expiry, new Date());
-        const isExpiringSoon = isBefore(expiry, addDays(new Date(), 30)) && !isExpired;
+        const isExpiringSoon = isBefore(expiry, addDays(new Date(), threshold)) && !isExpired;
 
         return (
           <div 
