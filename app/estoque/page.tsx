@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { ProductModal } from '@/components/inventory/ProductModal';
 import { BatchList } from '@/components/inventory/BatchList';
@@ -16,49 +16,83 @@ import {
   ClipboardList
 } from 'lucide-react';
 import { KPICard } from '@/components/finance/KPICard';
-
-// Mock data para estoque
-const MOCK_INVENTORY = [
-  {
-    id: '1',
-    name: 'Vacina V10 (Raiva)',
-    category: 'Vacina',
-    totalQuantity: 15,
-    unit: 'un',
-    minQuantity: 10,
-    batches: [
-      { id: 'b1', number: 'LT-0992', expiryDate: '2026-05-15', quantity: 5, unit: 'un' },
-      { id: 'b2', number: 'LT-1025', expiryDate: '2026-12-20', quantity: 10, unit: 'un' }
-    ]
-  },
-  {
-    id: '2',
-    name: 'Apoquel 16mg',
-    category: 'Medicamento',
-    totalQuantity: 45,
-    unit: 'comp',
-    minQuantity: 60,
-    batches: [
-      { id: 'b3', number: 'AP-552', expiryDate: '2026-04-20', quantity: 15, unit: 'comp' },
-      { id: 'b4', number: 'AP-601', expiryDate: '2027-02-15', quantity: 30, unit: 'comp' }
-    ]
-  },
-  {
-    id: '3',
-    name: 'Seringa 3ml c/ Agulha',
-    category: 'Insumo',
-    totalQuantity: 100,
-    unit: 'un',
-    minQuantity: 50,
-    batches: [
-      { id: 'b5', number: 'SR-Z88', expiryDate: '2028-10-01', quantity: 100, unit: 'un' }
-    ]
-  }
-];
+import { supabase } from '@/lib/supabase';
+import { addDays, isBefore, parseISO } from 'date-fns';
 
 export default function EstoquePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    totalItems: 0,
+    lowStock: 0,
+    expiringSoon: 0
+  });
+
+  const fetchInventory = async () => {
+    try {
+      setLoading(true);
+      
+      const { data, error } = await supabase
+        .from('estoque')
+        .select('*, estoque_lotes (*)')
+        .ilike('nome', `%${searchTerm}%`)
+        .order('nome');
+
+      if (error) throw error;
+
+      let lowStockCount = 0;
+      let expiringSoonCount = 0;
+      const now = new Date();
+      const in30Days = addDays(now, 30);
+
+      const formatted = data.map((item: any) => {
+        const totalQty = item.estoque_lotes?.reduce((acc: number, b: any) => acc + Number(b.qtd_atual), 0) || 0;
+        
+        if (totalQty < item.qtd_minima) lowStockCount++;
+
+        const formattedBatches = item.estoque_lotes?.map((b: any) => {
+          const expiry = parseISO(b.vencimento);
+          if (isBefore(expiry, in30Days)) expiringSoonCount++;
+          
+          return {
+            id: b.id,
+            number: b.num_lote,
+            expiryDate: b.vencimento,
+            quantity: b.qtd_atual,
+            unit: item.unidade
+          };
+        }) || [];
+
+        return {
+          id: item.id,
+          name: item.nome,
+          category: item.categoria,
+          totalQuantity: totalQty,
+          unit: item.unidade,
+          minQuantity: item.qtd_minima,
+          batches: formattedBatches
+        };
+      });
+
+      setInventory(formatted);
+      setStats({
+        totalItems: data.length,
+        lowStock: lowStockCount,
+        expiringSoon: expiringSoonCount
+      });
+
+    } catch (err) {
+      console.error('Erro ao buscar estoque:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, [searchTerm]);
 
   return (
     <AppShell>
@@ -88,19 +122,19 @@ export default function EstoquePage() {
         {/* Status Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <KPICard 
-             label="Itens em Estoque" 
-             value="24" 
+             label="Produtos em Estoque" 
+             value={stats.totalItems.toString().padStart(2, '0')} 
              icon={<Package size={24} />} 
           />
           <KPICard 
              label="Estoque Baixo" 
-             value="03" 
+             value={stats.lowStock.toString().padStart(2, '0')} 
              icon={<AlertTriangle size={24} />} 
              type="negative" 
           />
           <KPICard 
              label="Vencimento Próximo" 
-             value="01" 
+             value={stats.expiringSoon.toString().padStart(2, '0')} 
              icon={<Calendar size={24} />} 
              type="negative" 
           />
@@ -127,7 +161,7 @@ export default function EstoquePage() {
           </div>
 
           <div className="divide-y divide-slate-50">
-            {MOCK_INVENTORY.map((product) => (
+            {inventory.map((product) => (
               <div key={product.id} className="p-8 hover:bg-slate-50/30 transition-colors">
                 <div className="flex flex-col lg:flex-row justify-between gap-8">
                   {/* Info do Produto */}

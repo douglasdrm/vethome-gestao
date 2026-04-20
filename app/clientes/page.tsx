@@ -11,27 +11,50 @@ import {
   Users
 } from 'lucide-react';
 import Link from 'next/link';
-// import { supabase } from '@/lib/supabase'; // Adicionar quando estiver configurado
-
-// Mock data para demonstração inicial enquanto o banco é populado
-const MOCK_CLIENTS = [
-  { id: '1', name: 'Douglas Medeiros', phone: '(11) 98888-7777', address: 'Rua das Flores, 123', petCount: 2 },
-  { id: '2', name: 'Ana Silva', phone: '(11) 97777-6666', address: 'Av. Paulista, 1000', petCount: 1 },
-  { id: '3', name: 'Ricardo Santos', phone: '(11) 96666-5555', address: 'Rua Amazonas, 45', petCount: 3 },
-];
+import { supabase } from '@/lib/supabase';
 
 export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [clients, setClients] = useState(MOCK_CLIENTS);
+  const [loading, setLoading] = useState(true);
+  const [clients, setClients] = useState<any[]>([]);
 
-  // Simulação de busca
+  const fetchClients = async () => {
+    try {
+      setLoading(true);
+      
+      // Busca clientes e conta animais
+      const { data, error } = await supabase
+        .from('clientes')
+        .select(`
+          id, 
+          nome, 
+          telefone, 
+          endereco,
+          animais (id)
+        `)
+        .ilike('nome', `%${searchTerm}%`)
+        .order('nome');
+
+      if (error) throw error;
+
+      const formattedClients = data.map((c: any) => ({
+        id: c.id,
+        name: c.nome,
+        phone: c.telefone,
+        address: c.endereco,
+        petCount: c.animais?.length || 0
+      }));
+
+      setClients(formattedClients);
+    } catch (err) {
+      console.error('Erro ao buscar clientes:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const filtered = MOCK_CLIENTS.filter(c => 
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.phone.includes(searchTerm)
-    );
-    setClients(filtered);
+    fetchClients();
   }, [searchTerm]);
 
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { KPICard } from '@/components/finance/KPICard';
 import { TransactionList } from '@/components/finance/TransactionList';
@@ -16,49 +16,76 @@ import {
   ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
-
-// Mock data para transações
-const MOCK_TRANSACTIONS: any[] = [
-  {
-    id: '1',
-    type: 'Entrada',
-    category: 'Atendimento',
-    description: 'Consulta Domiciliar - Thor',
-    value: '250,00',
-    date: '19/04/2026',
-    status: 'Pago'
-  },
-  {
-    id: '2',
-    type: 'Saída',
-    category: 'Logística',
-    description: 'Abastecimento Posto shell',
-    value: '180,00',
-    date: '19/04/2026',
-    status: 'Pago'
-  },
-  {
-    id: '3',
-    type: 'Entrada',
-    category: 'Atendimento',
-    description: 'Vacinação V10 - Luna',
-    value: '160,00',
-    date: '18/04/2026',
-    status: 'Pendente'
-  },
-  {
-    id: '4',
-    type: 'Saída',
-    category: 'Insumos',
-    description: 'Compra de Seringas e Agulhas',
-    value: '85,50',
-    date: '17/04/2026',
-    status: 'Pago'
-  }
-];
+import { supabase } from '@/lib/supabase';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 export default function FinanceiroPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    totalBalance: 0,
+    totalIncome: 0,
+    totalExpense: 0,
+    totalPending: 0
+  });
+
+  const fetchFinancialData = async () => {
+    try {
+      setLoading(true);
+      
+      const { data, error } = await supabase
+        .from('financeiro')
+        .select('*')
+        .order('data_vencimento', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      // Calcular estatísticas (Simplificado)
+      const { data: allData, error: allErr } = await supabase
+        .from('financeiro')
+        .select('valor, tipo, status');
+      
+      if (!allErr && allData) {
+        const calculated = allData.reduce((acc, curr) => {
+          const val = Number(curr.valor);
+          if (curr.tipo === 'Receita') {
+            if (curr.status === 'Pago') acc.totalIncome += val;
+            if (curr.status === 'Pendente') acc.totalPending += val;
+          } else {
+            acc.totalExpense += val;
+          }
+          return acc;
+        }, { totalIncome: 0, totalExpense: 0, totalPending: 0 });
+
+        setStats({
+          ...calculated,
+          totalBalance: calculated.totalIncome - calculated.totalExpense
+        });
+      }
+
+      setTransactions(data.map(tx => ({
+        id: tx.id,
+        type: tx.tipo === 'Receita' ? 'Entrada' : 'Saída',
+        category: tx.categoria,
+        description: tx.descricao,
+        value: Number(tx.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+        date: format(new Date(tx.data_vencimento), 'dd/MM/yyyy', { locale: ptBR }),
+        status: tx.status
+      })));
+
+    } catch (err) {
+      console.error('Erro ao buscar dados financeiros:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFinancialData();
+  }, []);
 
   return (
     <AppShell>
@@ -89,26 +116,25 @@ export default function FinanceiroPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <KPICard 
             label="Saldo em Caixa" 
-            value="R$ 4.250,50" 
+            value={`R$ ${stats.totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
             icon={<DollarSign size={24} />} 
-            type="positive" 
-            trend="+12%" 
+            type={stats.totalBalance >= 0 ? 'positive' : 'negative'} 
           />
           <KPICard 
-            label="Entradas (Mês)" 
-            value="R$ 8.120,00" 
+            label="Entradas (Pago)" 
+            value={`R$ ${stats.totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
             icon={<TrendingUp size={24} />} 
             type="positive" 
           />
           <KPICard 
-            label="Saídas (Mês)" 
-            value="R$ 3.869,50" 
+            label="Saídas (Geral)" 
+            value={`R$ ${stats.totalExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
             icon={<TrendingDown size={24} />} 
             type="negative" 
           />
           <KPICard 
             label="A Receber" 
-            value="R$ 1.150,00" 
+            value={`R$ ${stats.totalPending.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
             icon={<Clock size={24} />} 
             type="neutral" 
           />
@@ -132,7 +158,7 @@ export default function FinanceiroPage() {
                 </Link>
              </div>
 
-             <TransactionList transactions={MOCK_TRANSACTIONS} />
+             <TransactionList transactions={transactions} />
           </div>
 
           {/* Right Column: Widgets */}

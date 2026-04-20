@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 import {
   LayoutDashboard,
   Users,
@@ -13,6 +14,8 @@ import {
   Bell,
   Search,
   Zap,
+  Loader2,
+  Package
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { QuickLogModal } from './services/QuickLogModal';
@@ -23,6 +26,7 @@ const pageTitles: Record<string, string> = {
   '/agenda':       'Agenda',
   '/atendimentos': 'Atendimentos',
   '/financeiro':   'Financeiro',
+  '/estoque':      'Estoque',
   '/configuracoes':'Configurações',
 };
 
@@ -48,76 +52,87 @@ function Topbar({ title, onQuickLog }: TopbarProps) {
         </button>
         <button 
           className="btn btn-primary btn-sm flex items-center gap-1.5" 
-          id="btn-novo-atendimento"
           onClick={onQuickLog}
+          id="btn-atendimento-topbar"
         >
-          <Zap size={15} fill="currentColor" />
-          Lançar
+          <Zap size={14} fill="currentColor" />
+          <span>Atendimento Rápido</span>
         </button>
       </div>
     </header>
   );
 }
 
-const bottomNav = [
-  { icon: LayoutDashboard, label: 'Início',       href: '/' },
-  { icon: Users,           label: 'Clientes',     href: '/clientes' },
-  { icon: Calendar,        label: 'Agenda',       href: '/agenda' },
-  { icon: DollarSign,      label: 'Financeiro',   href: '/financeiro' },
-];
-
-function BottomNav() {
-  const pathname = usePathname();
-  return (
-    <nav className="bottom-nav">
-      {bottomNav.map((item) => {
-        const active = pathname === item.href;
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`bottom-nav-item${active ? ' active' : ''}`}
-          >
-            <Icon />
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const title = pageTitles[pathname] ?? 'Vethome';
-  const [isQuickLogOpen, setIsQuickLogOpen] = React.useState(false);
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<any>(null);
+  const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
+
+  useEffect(() => {
+    // 1. Verificar sessão inicial
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      if (!session && pathname !== '/login') {
+        router.push('/login');
+      }
+      setLoading(false);
+    };
+
+    checkSession();
+
+    // 2. Escutar mudanças na auth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session && pathname !== '/login') {
+        router.push('/login');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router, pathname]);
+
+  // Se estiver carregando, mostra o spinner
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
+      </div>
+    );
+  }
+
+  // Se não tiver sessão e não estiver na página de login, redireciona (o useEffect cuida disso, mas aqui evitamos flash)
+  if (!session && pathname !== '/login') return null;
+
+  // Se estiver na página de login, renderiza apenas os filhos
+  if (pathname === '/login') return <>{children}</>;
+
+  const currentTitle = pageTitles[pathname] || 'VetHome';
 
   return (
-    <div className="app-shell">
+    <div className="app-container">
       <Sidebar onQuickLog={() => setIsQuickLogOpen(true)} />
-
-      <div className="app-content">
-        <Topbar title={title} onQuickLog={() => setIsQuickLogOpen(true)} />
-
-        <main className="app-main" id="main-content">
+      
+      <div className="main-content">
+        <Topbar title={currentTitle} onQuickLog={() => setIsQuickLogOpen(true)} />
+        
+        <main className="content-area">
           {children}
         </main>
-
-        <BottomNav />
       </div>
 
-      {/* FAB Mobile - Prioridade para o Lançamento Rápido */}
+      {/* FAB Mobile */}
       <button 
         className="fab flex items-center justify-center bg-emerald-600 text-white shadow-xl" 
         id="btn-fab-novo" 
-        title="Novo Registro Rápido"
         onClick={() => setIsQuickLogOpen(true)}
       >
         <Zap size={22} fill="currentColor" />
       </button>
 
-      {/* Modal Global de Lançamento Rápido */}
+      {/* Modal Global */}
       <QuickLogModal 
         isOpen={isQuickLogOpen} 
         onClose={() => setIsQuickLogOpen(false)} 

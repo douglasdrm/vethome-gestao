@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, 
   Users, 
@@ -13,14 +13,17 @@ import {
   Menu,
   X,
   Zap,
-  PawPrint
+  PawPrint,
+  Package,
+  LogOut
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
   { icon: Users, label: 'Clientes', href: '/clientes' },
   { icon: Calendar, label: 'Agenda', href: '/agenda' },
-  { icon: Stethoscope, label: 'Atendimentos', href: '/atendimentos' },
+  { icon: Package, label: 'Estoque', href: '/estoque' },
   { icon: DollarSign, label: 'Financeiro', href: '/financeiro' },
   { icon: Settings, label: 'Configurações', href: '/configuracoes' },
 ];
@@ -31,7 +34,13 @@ interface SidebarProps {
 
 export function Sidebar({ onQuickLog }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOpen, setIsOpen] = React.useState(true);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
 
   return (
     <>
@@ -61,7 +70,7 @@ export function Sidebar({ onQuickLog }: SidebarProps) {
             </div>
           </div>
 
-          {/* Botão de Ação Rápida - Solução para o backlog da vet */}
+          {/* Botão de Ação Rápida */}
           <div className="mb-8">
             <button 
               className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 px-4 rounded-2xl font-bold shadow-lg shadow-emerald-100 transition-all active:scale-95 group"
@@ -94,17 +103,25 @@ export function Sidebar({ onQuickLog }: SidebarProps) {
             })}
           </nav>
 
-          {/* Rodapé / Perfil */}
-          <div className="mt-auto pt-6 border-t border-slate-100">
+          {/* Rodapé / Perfil / Logout */}
+          <div className="mt-auto pt-6 border-t border-slate-100 space-y-4">
             <div className="flex items-center gap-3 px-2">
               <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 font-bold border border-slate-200">
                 DR
               </div>
-              <div className="overflow-hidden">
-                <p className="text-sm font-bold text-slate-800 truncate">Dra. Renata Silva</p>
-                <p className="text-xs text-slate-500 truncate">Veterinária</p>
+              <div className="flex-1 overflow-hidden">
+                <p className="text-sm font-bold text-slate-800 truncate">Dra. Renata</p>
+                <p className="text-[10px] text-slate-400 truncate">Médica Veterinária</p>
               </div>
             </div>
+            
+            <button 
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-rose-500 hover:bg-rose-50 transition-all"
+            >
+              <LogOut size={20} />
+              <span>Sair do Sistema</span>
+            </button>
           </div>
         </div>
       </aside>

@@ -1,4 +1,6 @@
-// Server Component — sem 'use client'
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Calendar,
@@ -10,69 +12,11 @@ import {
   AlertCircle,
   ArrowRight,
   PawPrint,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
-
-// ─── Dados Mockados ───────────────────────────────────────────────────────────
-
-const statsData = [
-  {
-    label: 'Atendimentos hoje',
-    value: '8',
-    trend: '+2 vs ontem',
-    trendUp: true,
-    icon: Stethoscope,
-    iconBg: 'var(--brand-50)',
-    iconColor: 'var(--brand-600)',
-  },
-  {
-    label: 'Clientes ativos',
-    value: '142',
-    trend: '+5 este mês',
-    trendUp: true,
-    icon: Users,
-    iconBg: 'var(--blue-100)',
-    iconColor: 'var(--blue-500)',
-  },
-  {
-    label: 'Receita do mês',
-    value: 'R$ 4.820',
-    trend: '+12% vs mês ant.',
-    trendUp: true,
-    icon: DollarSign,
-    iconBg: 'var(--amber-100)',
-    iconColor: 'var(--amber-500)',
-  },
-  {
-    label: 'Consultas pendentes',
-    value: '3',
-    trend: 'Para amanhã',
-    trendUp: false,
-    icon: Calendar,
-    iconBg: 'var(--violet-100)',
-    iconColor: 'var(--violet-500)',
-  },
-];
-
-const todaySchedule = [
-  { time: '09:00', status: 'done',    pet: 'Thor',   species: 'Cão',  client: 'Marcos Oliveira',  type: 'Consulta Geral',    id: '1' },
-  { time: '10:30', status: 'done',    pet: 'Luna',   species: 'Gata', client: 'Ana Paula',        type: 'Vacinação V4',      id: '2' },
-  { time: '13:00', status: 'current', pet: 'Bob',    species: 'Cão',  client: 'Roberto Lima',     type: 'Retorno Pós-Op',    id: '3' },
-  { time: '15:00', status: 'pending', pet: 'Mia',    species: 'Gata', client: 'Fernanda Costa',   type: 'Consulta Geral',    id: '4' },
-  { time: '16:30', status: 'pending', pet: 'Buddy',  species: 'Cão',  client: 'Carlos Santos',    type: 'Vacinação Antirrábica', id: '5' },
-];
-
-const recentActivity = [
-  { action: 'Novo atendimento',  detail: 'Thor — Marcos Oliveira',   time: 'há 2h',   color: 'var(--brand-500)',  bg: 'var(--brand-50)' },
-  { action: 'Pagamento recebido', detail: 'R$ 250,00 — Ana Paula', time: 'há 3h',   color: 'var(--amber-500)', bg: 'var(--amber-100)' },
-  { action: 'Vacina registrada', detail: 'V4 — Luna',              time: 'há 3h',   color: 'var(--sky-500)',   bg: 'var(--sky-100)' },
-  { action: 'Novo cliente',      detail: 'Fernanda Costa',         time: 'ontem',   color: 'var(--violet-500)',bg: 'var(--violet-100)' },
-];
-
-const alerts = [
-  { type: 'warning', text: 'Thor (Marcos) — Vacina V8 vence em 5 dias' },
-  { type: 'danger',  text: 'Luna (Ana Paula) — Vermífugo atrasado há 7 dias' },
-];
+import { supabase } from '@/lib/supabase';
+import { startOfMonth } from 'date-fns';
 
 // ─── Componentes Internos ─────────────────────────────────────────────────────
 
@@ -104,9 +48,102 @@ function SpeciesIcon({ species }: { species: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any[]>([]);
+  const [schedule, setSchedule] = useState<any[]>([]);
+  const [financialTarget] = useState(6000); 
+  const [currentMonthRevenue, setCurrentMonthRevenue] = useState(0);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const today = new Date().toISOString().split('T')[0];
+      const monthStart = startOfMonth(new Date()).toISOString();
+
+      // 1. Atendimentos hoje
+      const { count: todayAppointments } = await supabase
+        .from('agenda')
+        .select('*', { count: 'exact', head: true })
+        .eq('data', today);
+
+      // 2. Clientes ativos
+      const { count: totalClients } = await supabase
+        .from('clientes')
+        .select('*', { count: 'exact', head: true });
+
+      // 3. Receita do mês
+      const { data: revenueData } = await supabase
+        .from('financeiro')
+        .select('valor')
+        .eq('tipo', 'Receita')
+        .eq('status', 'Pago')
+        .gte('data_pagamento', monthStart);
+      
+      const monthlyRevenue = revenueData?.reduce((acc, curr) => acc + Number(curr.valor), 0) || 0;
+      setCurrentMonthRevenue(monthlyRevenue);
+
+      // 4. Agendas Pendentes
+      const { count: pendingAppointments } = await supabase
+        .from('agenda')
+        .select('*', { count: 'exact', head: true })
+        .gte('data', today)
+        .eq('status', 'Pendente');
+
+      // 5. Agenda de Hoje Detalhada
+      const { data: agendaItems } = await supabase
+        .from('agenda')
+        .select(`
+          id,
+          horario,
+          status,
+          tipo_servico,
+          animais (nome, especie, clientes (nome))
+        `)
+        .eq('data', today)
+        .order('horario');
+
+      setStats([
+        { label: 'Atendimentos hoje', value: String(todayAppointments || 0), icon: Stethoscope, bg: 'var(--brand-50)', color: 'var(--brand-600)' },
+        { label: 'Total de Clientes', value: String(totalClients || 0), icon: Users, bg: 'var(--blue-100)', color: 'var(--blue-500)' },
+        { label: 'Receita do mês', value: `R$ ${monthlyRevenue.toLocaleString('pt-BR')}`, icon: DollarSign, bg: 'var(--amber-100)', color: 'var(--amber-500)' },
+        { label: 'Agendas Pendentes', value: String(pendingAppointments || 0), icon: Calendar, bg: 'var(--violet-100)', color: 'var(--violet-500)' },
+      ]);
+
+      setSchedule(agendaItems?.map((item: any) => ({
+        id: item.id,
+        time: item.horario.substring(0, 5),
+        status: item.status === 'Confirmado' ? 'done' : item.status === 'Em Andamento' ? 'current' : 'pending',
+        pet: item.animais?.nome,
+        species: item.animais?.especie,
+        client: item.animais?.clientes?.nome,
+        type: item.tipo_servico
+      })) || []);
+
+    } catch (err) {
+      console.error('Erro ao carregar dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
   const now = new Date();
   const greeting = now.getHours() < 12 ? 'Bom dia' : now.getHours() < 18 ? 'Boa tarde' : 'Boa noite';
   const dateStr = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-40 bg-slate-50 min-h-screen">
+        <Loader2 className="h-10 w-10 text-emerald-500 animate-spin" />
+        <p className="mt-4 text-slate-500 font-medium">Sincronizando clínica...</p>
+      </div>
+    );
+  }
+
+  const revenuePercentage = Math.min(Math.round((currentMonthRevenue / (financialTarget || 1)) * 100), 100);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -121,44 +158,21 @@ export default function DashboardPage() {
             {dateStr}
           </p>
         </div>
-        <Link href="/atendimentos" className="btn btn-primary btn-sm" id="btn-novo-atendimento-dash">
+        <Link href="/agenda" className="btn btn-primary btn-sm" id="btn-novo-atendimento-dash">
           <Stethoscope size={15} />
-          Novo Atendimento
+          Minha Agenda
         </Link>
       </div>
 
-      {/* ── Alertas ── */}
-      {alerts.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {alerts.map((alert, i) => (
-            <div key={i} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.625rem',
-              padding: '0.625rem 1rem',
-              borderRadius: 'var(--radius-md)',
-              background: alert.type === 'danger' ? 'var(--rose-100)' : 'var(--amber-100)',
-              border: `1px solid ${alert.type === 'danger' ? '#fecdd3' : '#fde68a'}`,
-              fontSize: '0.825rem',
-              color: alert.type === 'danger' ? 'var(--rose-500)' : 'var(--amber-500)',
-              fontWeight: 500,
-            }}>
-              <AlertCircle size={15} style={{ flexShrink: 0 }} />
-              {alert.text}
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* ── Cards de Estatísticas ── */}
       <div className="grid-cols-4" style={{ gap: '1rem' }}>
-        {statsData.map((stat) => {
+        {stats.map((stat) => {
           const Icon = stat.icon;
           return (
             <div key={stat.label} className="stat-card">
               <div className="stat-card-header">
-                <div className="stat-card-icon" style={{ background: stat.iconBg }}>
-                  <Icon size={20} style={{ color: stat.iconColor }} />
+                <div className="stat-card-icon" style={{ background: stat.bg }}>
+                  <Icon size={20} style={{ color: stat.color }} />
                 </div>
                 <TrendingUp size={14} style={{ color: 'var(--text-muted)' }} />
               </div>
@@ -166,9 +180,6 @@ export default function DashboardPage() {
                 <p className="stat-card-value">{stat.value}</p>
                 <p className="stat-card-label">{stat.label}</p>
               </div>
-              <p className={`stat-card-trend ${stat.trendUp ? 'trend-up' : 'text-muted'}`}>
-                {stat.trendUp ? '▲' : '→'} {stat.trend}
-              </p>
             </div>
           );
         })}
@@ -182,7 +193,7 @@ export default function DashboardPage() {
           <div className="card-header">
             <div>
               <p className="card-title">Agenda de Hoje</p>
-              <p className="card-subtitle">{todaySchedule.length} atendimentos programados</p>
+              <p className="card-subtitle">{schedule.length} atendimentos programados</p>
             </div>
             <Link href="/agenda" className="btn btn-ghost btn-sm" id="btn-ver-agenda">
               Ver tudo <ArrowRight size={14} />
@@ -191,11 +202,9 @@ export default function DashboardPage() {
 
           <div className="card-body" style={{ padding: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {todaySchedule.map((item) => (
-                <Link
+              {schedule.length > 0 ? schedule.map((item) => (
+                <div
                   key={item.id}
-                  href={`/clientes/${item.id}`}
-                  id={`schedule-item-${item.id}`}
                   className={`schedule-row${item.status === 'done' ? ' schedule-row--done' : ''}`}
                 >
                   <span style={{
@@ -222,8 +231,13 @@ export default function DashboardPage() {
                   </div>
 
                   <StatusBadge status={item.status} />
-                </Link>
-              ))}
+                </div>
+              )) : (
+                <div className="py-10 text-center text-slate-400">
+                   <Calendar size={24} className="mx-auto mb-2 opacity-20" />
+                   <p className="text-sm font-medium">Sem compromissos para hoje</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -231,58 +245,27 @@ export default function DashboardPage() {
         {/* Coluna Direita */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-          {/* Atividade Recente */}
-          <div className="card">
-            <div className="card-header">
-              <p className="card-title">Atividade Recente</p>
-            </div>
-            <div className="card-body">
-              <div className="timeline">
-                {recentActivity.map((item, i) => (
-                  <div key={i} className="timeline-item">
-                    <div>
-                      <div
-                        className="timeline-dot"
-                        style={{ background: item.bg, color: item.color, width: 32, height: 32 }}
-                      >
-                        <PawPrint size={14} />
-                      </div>
-                      {i < recentActivity.length - 1 && <div className="timeline-line" />}
-                    </div>
-                    <div className="timeline-content">
-                      <div className="timeline-header">
-                        <p className="timeline-title" style={{ fontSize: '0.8rem' }}>{item.action}</p>
-                        <span className="timeline-time">{item.time}</span>
-                      </div>
-                      <p className="timeline-body">{item.detail}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
           {/* Resumo Financeiro */}
           <div className="card" style={{ background: 'linear-gradient(135deg, var(--brand-500), var(--brand-700))', border: 'none' }}>
             <div className="card-body" style={{ color: 'white' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', opacity: 0.85 }}>
                 <DollarSign size={16} />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Financeiro — Abril</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Financeiro — Meta Mensal</span>
               </div>
               <p style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1 }}>
-                R$ 4.820
+                R$ {currentMonthRevenue.toLocaleString('pt-BR')}
               </p>
-              <p style={{ fontSize: '0.78rem', opacity: 0.8, marginTop: '4px' }}>de R$ 6.000 meta</p>
+              <p style={{ fontSize: '0.78rem', opacity: 0.8, marginTop: '4px' }}>de R$ {financialTarget.toLocaleString('pt-BR')} meta</p>
 
               <div style={{ marginTop: '1rem', background: 'rgba(255,255,255,.2)', borderRadius: 'var(--radius-full)', height: 6 }}>
                 <div style={{
-                  width: '80%',
+                  width: `${revenuePercentage}%`,
                   height: '100%',
                   background: 'rgba(255,255,255,.85)',
                   borderRadius: 'var(--radius-full)',
                 }} />
               </div>
-              <p style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '6px' }}>80% da meta atingida</p>
+              <p style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '6px' }}>{revenuePercentage}% da meta atingida</p>
 
               <Link href="/financeiro" className="btn btn-sm" id="btn-ver-financeiro-dash" style={{
                 marginTop: '1rem',
@@ -296,6 +279,13 @@ export default function DashboardPage() {
                 Ver detalhes <ArrowRight size={14} />
               </Link>
             </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Dica do Especialista</h4>
+             <p className="text-sm text-slate-600 leading-relaxed font-medium">
+               "Lembre-se de registrar as vacinas aplicadas hoje para atualizar o estoque automaticamente."
+             </p>
           </div>
         </div>
       </div>
