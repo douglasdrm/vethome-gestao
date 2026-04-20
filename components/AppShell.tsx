@@ -74,10 +74,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
 
   useEffect(() => {
-    // [MVP BYPASS] Temporariamente ignorando a verificação de sessão real
-    // enquanto testamos a criação de clientes/pets localmente.
-    setSession({ fake: true });
-    setLoading(false);
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session && pathname !== '/login') {
+        router.push('/login');
+      } else {
+        setSession(session);
+      }
+      setLoading(false);
+    };
+
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session && pathname !== '/login') {
+        router.push('/login');
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [router, pathname]);
 
   // Se estiver carregando, mostra o spinner

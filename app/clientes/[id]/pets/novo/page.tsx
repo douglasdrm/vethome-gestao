@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { AppShell } from '@/components/AppShell';
-import { ArrowLeft, Save, Loader2, PawPrint } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, PawPrint, Camera, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { supabase, MOCK_USER_ID } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { uploadFile } from '@/lib/storage';
 
 export default function NovoPetPage() {
   const router = useRouter();
@@ -23,6 +24,26 @@ export default function NovoPetPage() {
   const [peso, setPeso] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
   const [cor, setCor] = useState('');
+  const [fotoUrl, setFotoUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const url = await uploadFile(file, user.id, 'pets');
+      setFotoUrl(url);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao subir imagem');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,10 +51,13 @@ export default function NovoPetPage() {
     setErrorMsg('');
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sessão expirada. Faça login novamente.');
+
       const { data, error } = await supabase
         .from('animais')
         .insert({
-          user_id: MOCK_USER_ID,
+          user_id: user.id,
           cliente_id: clientId,
           nome,
           especie: especie as any,
@@ -41,7 +65,8 @@ export default function NovoPetPage() {
           sexo: sexo as any,
           peso_kg: peso ? parseFloat(peso.replace(',', '.')) : null,
           data_nascimento: dataNascimento || null,
-          cor: cor || null
+          cor: cor || null,
+          foto_url: fotoUrl || null
         })
         .select()
         .single();
@@ -51,7 +76,7 @@ export default function NovoPetPage() {
       router.push(`/clientes/${clientId}`);
     } catch (err: any) {
       console.error('Erro ao salvar pet:', err);
-      setErrorMsg('Erro ao cadastrar animal. Tente novamente.');
+      setErrorMsg(err.message || 'Erro ao cadastrar animal. Tente novamente.');
       setLoading(false);
     }
   };
@@ -80,6 +105,32 @@ export default function NovoPetPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-6">
             
+            {/* Upload de Foto */}
+            <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-100 rounded-[2rem] bg-slate-50/50 group hover:border-emerald-200 transition-all">
+              {fotoUrl ? (
+                <div className="relative w-32 h-32">
+                  <img src={fotoUrl} alt="Preview" className="w-full h-full object-cover rounded-3xl" />
+                  <button 
+                    onClick={() => setFotoUrl('')}
+                    className="absolute -top-2 -right-2 p-1.5 bg-rose-500 text-white rounded-full shadow-lg hover:scale-110 transition-transform"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-3 cursor-pointer py-4">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-slate-400 group-hover:text-emerald-500 group-hover:scale-110 transition-all">
+                    {uploading ? <Loader2 className="animate-spin" /> : <Camera size={32} />}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-bold text-slate-700">Foto do Animal</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">JPG ou PNG, Máx 5MB</p>
+                  </div>
+                  <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
+                </label>
+              )}
+            </div>
+
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Nome do Animal</label>
               <input 

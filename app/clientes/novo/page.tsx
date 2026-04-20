@@ -13,7 +13,7 @@ import {
   Loader2
 } from 'lucide-react';
 import Link from 'next/link';
-import { supabase, MOCK_USER_ID } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 export default function NovoClientePage() {
   const router = useRouter();
@@ -33,10 +33,13 @@ export default function NovoClientePage() {
     setErrorMsg('');
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sessão expirada. Faça login novamente.');
+
       const { data, error } = await supabase
         .from('clientes')
         .insert({
-          user_id: MOCK_USER_ID,
+          user_id: user.id,
           nome,
           telefone: telefone || null,
           email: email || null,
@@ -45,6 +48,7 @@ export default function NovoClientePage() {
         })
         .select()
         .single();
+// ...
 
       if (error) throw error;
 

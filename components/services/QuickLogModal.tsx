@@ -14,7 +14,8 @@ import {
   PawPrint,
   Loader2
 } from 'lucide-react';
-import { supabase, MOCK_USER_ID } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { uploadFile } from '@/lib/storage';
 import { calculateNextDoseDate, formatToInputDate, VaccineType, VACCINE_PROTOCOLS } from '@/lib/vaccine-logic';
 
 interface QuickLogModalProps {
@@ -36,6 +37,26 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
   const [isSearchingPet, setIsSearchingPet] = useState(false);
   const [loading, setLoading] = useState(false);
   const [serviceDescription, setServiceDescription] = useState('');
+  const [fotoUrl, setFotoUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const url = await uploadFile(file, user.id, 'vacinas');
+      setFotoUrl(url);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao subir imagem');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Busca pets quando o modal abre ou o termo de busca muda
   useEffect(() => {
@@ -98,15 +119,19 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
 
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sessão expirada. Faça login novamente.');
+
       if (type === 'vaccine') {
         const { error: vacError } = await supabase
           .from('vacinas')
           .insert([{
-            user_id: MOCK_USER_ID,
+            user_id: user.id,
             animal_id: selectedPetId,
             nome: selectedVaccine,
             data_aplicacao: date,
-            data_reforco: nextDoseDate || null
+            data_reforco: nextDoseDate || null,
+            foto_url: fotoUrl || null
           }]);
         
         if (vacError) throw vacError;
@@ -132,7 +157,7 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
         await supabase
           .from('eventos')
           .insert([{
-            user_id: MOCK_USER_ID,
+            user_id: user.id,
             animal_id: selectedPetId,
             tipo: 'vacina',
             titulo: `Vacinação: ${selectedVaccine}`,
@@ -147,7 +172,7 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
         const { data: appData, error: appError } = await supabase
           .from('atendimentos')
           .insert([{
-            user_id: MOCK_USER_ID,
+            user_id: user.id,
             animal_id: selectedPetId,
             cliente_id: petInfo?.clientes?.id || null,
             data_hora: new Date(date).toISOString(),
@@ -163,7 +188,7 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
         await supabase
           .from('eventos')
           .insert([{
-            user_id: MOCK_USER_ID,
+            user_id: user.id,
             animal_id: selectedPetId,
             tipo: 'atendimento',
             titulo: 'Atendimento Rápido',
@@ -281,14 +306,29 @@ export function QuickLogModal({ isOpen, onClose }: QuickLogModalProps) {
                 )}
               </div>
 
-              {/* Foto da Vacina - O diferencial para agilidade */}
+              {/* Foto da Vacina */}
               {type === 'vaccine' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Foto da Vacina / Lote</label>
-                    <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 hover:border-emerald-300 hover:bg-emerald-50/20 transition-all cursor-pointer">
-                      <Camera size={32} className="text-slate-400" />
-                      <span className="text-xs text-slate-500 font-medium">Tirar foto ou anexar (Em breve)</span>
+                    <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/50 hover:border-emerald-200 transition-all">
+                      {fotoUrl ? (
+                         <div className="relative w-full aspect-video max-h-32">
+                           <img src={fotoUrl} alt="Lote" className="w-full h-full object-contain rounded-xl" />
+                           <button 
+                             onClick={() => setFotoUrl('')}
+                             className="absolute -top-2 -right-2 p-1 bg-rose-500 text-white rounded-full shadow-lg"
+                           >
+                             <X size={12} />
+                           </button>
+                         </div>
+                      ) : (
+                        <label className="flex flex-col items-center gap-2 cursor-pointer py-2">
+                          {uploading ? <Loader2 className="animate-spin text-emerald-500" /> : <Camera size={24} className="text-slate-400" />}
+                          <span className="text-xs text-slate-500 font-medium">{uploading ? 'Subindo...' : 'Anexar Foto'}</span>
+                          <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
+                        </label>
+                      )}
                     </div>
                   </div>
                   

@@ -17,7 +17,9 @@ import {
   Plus
 } from 'lucide-react';
 import Link from 'next/link';
-import { supabase, MOCK_USER_ID } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { uploadFile } from '@/lib/storage';
+import { X, Upload } from 'lucide-react';
 
 export default function NovoAtendimentoPage() {
   const params = useParams();
@@ -38,6 +40,24 @@ export default function NovoAtendimentoPage() {
     mucosas: ''
   });
   const [value, setValue] = useState('');
+  const [fotoUrl, setFotoUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+      const url = await uploadFile(file, user.id, 'exames');
+      setFotoUrl(url);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao subir imagem');
+    } finally {
+      setUploading(false);
+    }
+  };
   
   const handleVitalsChange = (field: string, val: string) => {
     setVitals(prev => ({ ...prev, [field]: val }));
@@ -52,21 +72,25 @@ export default function NovoAtendimentoPage() {
 
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sessão expirada. Faça login novamente.');
+
       const animalId = params.petId as string;
       const clienteId = params.id as string;
       const atendimentoData = {
-        user_id: MOCK_USER_ID,
+        user_id: user.id,
         animal_id: animalId,
         cliente_id: clienteId,
         data_hora: new Date(date).toISOString(),
         tipo: 'atendimento' as any,
         anamnese,
-        diagnostico: conduta, // Usando conduta como diagnóstico/plano
+        diagnostico: conduta,
         peso_kg: vitals.weight ? parseFloat(vitals.weight) : null,
         temperatura: vitals.temp ? parseFloat(vitals.temp) : null,
         valor: value ? parseFloat(value) : 0,
-        status_pagamento: 'pago' as any, // Simplificado para MVP
-        observacoes: `Frequência Cardíaca: ${vitals.heartRate || '-'} | FR: ${vitals.respRate || '-'} | TPC: ${vitals.tpc || '-'} | Mucosas: ${vitals.mucosas || '-'}`
+        status_pagamento: 'pago' as any,
+        foto_url: fotoUrl || null,
+        observacoes: `FC: ${vitals.heartRate || '-'} | FR: ${vitals.respRate || '-'} | TPC: ${vitals.tpc || '-'} | Mucosas: ${vitals.mucosas || '-'}`
       };
 
       // 1. Salvar Atendimento
@@ -91,7 +115,7 @@ export default function NovoAtendimentoPage() {
         await supabase
           .from('financeiro')
           .insert([{
-            user_id: MOCK_USER_ID,
+            user_id: user.id,
             tipo: 'receita',
             descricao: `Atendimento - ${anamnese.substring(0, 30)}...`,
             valor: parseFloat(value),
@@ -106,7 +130,7 @@ export default function NovoAtendimentoPage() {
       await supabase
         .from('eventos')
         .insert([{
-          user_id: MOCK_USER_ID,
+          user_id: user.id,
           animal_id: animalId,
           tipo: 'atendimento',
           titulo: 'Consulta Clínica',
@@ -214,13 +238,30 @@ export default function NovoAtendimentoPage() {
                     <Plus size={20} />
                   </button>
                 </div>
-                <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl text-slate-400 text-sm italic">
-                  Nenhuma vacina vinculada a este atendimento.
+                <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/50 hover:border-emerald-200 transition-all">
+                  {fotoUrl ? (
+                    <div className="relative w-full aspect-video">
+                      <img src={fotoUrl} alt="Anexo" className="w-full h-full object-contain rounded-xl" />
+                      <button 
+                         onClick={() => setFotoUrl('')}
+                         className="absolute -top-3 -right-3 p-2 bg-rose-500 text-white rounded-full shadow-lg"
+                      >
+                         <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center gap-3 cursor-pointer">
+                      <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400">
+                        {uploading ? <Loader2 className="animate-spin text-emerald-500" /> : <Camera size={24} />}
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-slate-700">Anexar Foto</p>
+                        <p className="text-[10px] text-slate-400 font-bold">Rótulo, Exame ou Receita</p>
+                      </div>
+                      <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
+                    </label>
+                  )}
                 </div>
-                <button type="button" className="mt-4 w-full flex items-center justify-center gap-2 p-3 text-emerald-600 font-bold bg-emerald-50/50 rounded-xl hover:bg-emerald-50 transition-colors">
-                  <Camera size={18} />
-                  Anexar Foto do Rótulo
-                </button>
             </div>
 
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
